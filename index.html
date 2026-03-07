@@ -9,44 +9,58 @@
   <style>
     *{margin:0;padding:0;box-sizing:border-box;}
     html,body,#root{background:#04080f;min-height:100%;width:100%;}
-    body{overflow-x:hidden;font-family:monospace;}
-    #loading{position:fixed;inset:0;background:#04080f;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;}
-    #loading .logo{color:#00d4ff;font-size:13px;letter-spacing:5px;margin-bottom:16px;font-weight:700;}
-    #loading .name{color:#e2eeff;font-size:28px;font-weight:800;margin-bottom:6px;}
-    #loading .sub{color:#2d4a68;font-size:11px;letter-spacing:3px;margin-bottom:32px;}
-    #loading .bar{width:180px;height:2px;background:#0d1825;border-radius:1px;overflow:hidden;}
-    #loading .fill{height:100%;background:linear-gradient(90deg,#00d4ff,#00f5a0);border-radius:1px;animation:load 1.5s ease-in-out infinite;}
-    @keyframes load{0%{width:0%}60%{width:100%}100%{width:100%}}
+    body{overflow-x:hidden;}
+    #loading{position:fixed;inset:0;background:#04080f;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;transition:opacity .4s;}
+    .l-logo{color:#00d4ff;font-size:11px;letter-spacing:6px;margin-bottom:14px;font-family:monospace;font-weight:700;}
+    .l-name{color:#e2eeff;font-size:32px;font-weight:800;margin-bottom:4px;font-family:sans-serif;}
+    .l-sub{color:#2d4a68;font-size:10px;letter-spacing:4px;margin-bottom:32px;font-family:monospace;}
+    .l-bar{width:160px;height:2px;background:#0d1825;border-radius:1px;overflow:hidden;}
+    .l-fill{height:100%;background:linear-gradient(90deg,#00d4ff,#00f5a0);animation:ld 1.4s ease-in-out infinite;}
+    @keyframes ld{0%{width:0%,transform:translateX(0)}70%{width:100%}100%{width:100%}}
   </style>
 </head>
 <body>
   <div id="loading">
-    <div class="logo">QUANTEDGE</div>
-    <div class="name">AI v3.0</div>
-    <div class="sub">NIFTY · BANKNIFTY · OPTIONS</div>
-    <div class="bar"><div class="fill"></div></div>
+    <div class="l-logo">QUANTEDGE</div>
+    <div class="l-name">AI v3.0</div>
+    <div class="l-sub">NIFTY · BANKNIFTY · OPTIONS</div>
+    <div class="l-bar"><div class="l-fill"></div></div>
   </div>
   <div id="root"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
   <script>
-  // Hide loader once React mounts
-  window.__hideLoader = function() {
-    const l = document.getElementById('loading');
-    if(l) { l.style.opacity='0'; l.style.transition='opacity .3s'; setTimeout(()=>l.remove(), 300); }
-  };
-  </script>
-  <script>
-(() => {
+var __QE = (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
   var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
     get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
   }) : x)(function(x) {
     if (typeof require !== "undefined") return require.apply(this, arguments);
     throw Error('Dynamic require of "' + x + '" is not supported');
   });
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
   // home/claude/quantedge-v3/src/TradingPlatform.jsx
+  var TradingPlatform_exports = {};
+  __export(TradingPlatform_exports, {
+    default: () => TradingPlatform
+  });
   var import_react = __require("react");
 
   // home/claude/quantedge-v3/src/utils.js
@@ -2102,19 +2116,23 @@
       ] })
     ] });
   }
+  return __toCommonJS(TradingPlatform_exports);
 })();
 
   </script>
   <script>
-  // Mount the app
   (function() {
     try {
-      const container = document.getElementById('root');
-      const root = ReactDOM.createRoot(container);
+      // __QE.default is the TradingPlatform component
+      var TradingPlatform = __QE.default;
+      var container = document.getElementById('root');
+      var root = ReactDOM.createRoot(container);
       root.render(React.createElement(React.StrictMode, null, React.createElement(TradingPlatform)));
-      window.__hideLoader();
+      // Hide loader
+      var loader = document.getElementById('loading');
+      if(loader) { loader.style.opacity = '0'; setTimeout(function(){ loader.remove(); }, 400); }
     } catch(e) {
-      document.getElementById('loading').innerHTML = '<div style="color:#ff3d6b;font-family:monospace;padding:40px;text-align:center"><div style="font-size:30px;margin-bottom:12px">⚠</div><div style="font-size:14px;margin-bottom:8px">Error loading platform</div><div style="font-size:11px;color:#6b92b8">'+e.message+'</div></div>';
+      document.getElementById('loading').innerHTML = '<div style="color:#ff3d6b;font-family:monospace;padding:40px;text-align:center;max-width:500px"><div style="font-size:30px;margin-bottom:12px">⚠</div><div style="font-size:14px;margin-bottom:8px">Error loading platform</div><div style="font-size:11px;color:#6b92b8;word-break:break-all">'+e.message+'</div></div>';
       console.error('Mount error:', e);
     }
   })();
