@@ -1,0 +1,1863 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+  <meta name="theme-color" content="#04080f"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <title>QuantEdge AI v3.0</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    html,body,#root{background:#04080f;min-height:100%;width:100%;}
+    body{overflow-x:hidden;}
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+// ── UTILS ──
+// ── Themes ────────────────────────────────────────────────────────────────────
+const THEMES = {
+  dark: {
+    bg:"#04080f",bg2:"#080f1a",bg3:"#0d1825",bg4:"#111f30",
+    card:"#0a1628",cardBorder:"#142238",cardHover:"#0e1e33",
+    text:"#e2eeff",textSub:"#6b92b8",textMuted:"#2d4a68",
+    accent:"#00d4ff",accentDim:"#00d4ff18",accentGlow:"0 0 20px #00d4ff44",
+    green:"#00f5a0",greenBg:"#00f5a010",greenBorder:"#00f5a030",
+    red:"#ff3d6b",redBg:"#ff3d6b10",redBorder:"#ff3d6b30",
+    yellow:"#ffb800",yellowBg:"#ffb80010",yellowBorder:"#ffb80030",
+    purple:"#a78bfa",purpleBg:"#a78bfa10",purpleBorder:"#a78bfa30",
+    orange:"#ff7849",orangeBg:"#ff784910",
+    navBg:"#030710",navBorder:"#0e1e33",
+    inputBg:"#060d18",inputBorder:"#142238",
+    shadow:"0 4px 32px #00000088",shadowLg:"0 12px 60px #000000aa",
+    paperBanner:"#1a1000",paperBannerBorder:"#ffb80044",
+  },
+  light: {
+    bg:"#f4f7fc",bg2:"#eaeff7",bg3:"#dde5f0",bg4:"#d0dcea",
+    card:"#ffffff",cardBorder:"#cbd8ea",cardHover:"#f8fafd",
+    text:"#0c1829",textSub:"#3d5a7a",textMuted:"#8fafc8",
+    accent:"#0062cc",accentDim:"#0062cc15",accentGlow:"0 0 20px #0062cc33",
+    green:"#007a50",greenBg:"#007a5010",greenBorder:"#007a5030",
+    red:"#c4003e",redBg:"#c4003e10",redBorder:"#c4003e30",
+    yellow:"#b87800",yellowBg:"#b8780010",yellowBorder:"#b8780030",
+    purple:"#6d38d4",purpleBg:"#6d38d410",purpleBorder:"#6d38d430",
+    orange:"#d4580a",orangeBg:"#d4580a10",
+    navBg:"#ffffff",navBorder:"#cbd8ea",
+    inputBg:"#f8fafd",inputBorder:"#cbd8ea",
+    shadow:"0 2px 16px #00000014",shadowLg:"0 8px 40px #00000020",
+    paperBanner:"#fffbf0",paperBannerBorder:"#ffb80066",
+  }
+};
+
+// ── Brokers ───────────────────────────────────────────────────────────────────
+const BROKERS = {
+  "Upstox":     { fields:["api_key","api_secret","access_token"], docsUrl:"https://upstox.com/developer/api-documentation/", logo:"U", color:"#6c63ff" },
+  "Zerodha":    { fields:["api_key","api_secret","access_token"], docsUrl:"https://kite.trade/docs/connect/v3/", logo:"Z", color:"#387ed1" },
+  "Angel One":  { fields:["api_key","client_id","password","totp_secret"], docsUrl:"https://smartapi.angelbroking.com/docs", logo:"A", color:"#e94560" },
+  "Fyers":      { fields:["client_id","secret_key","access_token"], docsUrl:"https://myapi.fyers.in/docs/", logo:"F", color:"#00b4d8" },
+  "Dhan":       { fields:["client_id","access_token"], docsUrl:"https://dhanhq.co/docs/latest/", logo:"D", color:"#2ecc71" },
+};
+
+// ── Formatters ─────────────────────────────────────────────────────────────────
+const fmt    = (n, d=2) => Number(n||0).toLocaleString("en-IN",{minimumFractionDigits:d,maximumFractionDigits:d});
+const fmtPnl = n => n >= 0 ? `+₹${fmt(Math.abs(n))}` : `-₹${fmt(Math.abs(n))}`;
+const fmtPct = n => `${n >= 0 ? "+" : ""}${Number(n||0).toFixed(2)}%`;
+const timeStr = () => new Date().toLocaleTimeString("en-IN",{hour12:false});
+const dateStr = () => new Date().toLocaleDateString("en-IN");
+
+// ── Market ─────────────────────────────────────────────────────────────────────
+const getMarketStatus = () => {
+  const now = new Date(), day = now.getDay();
+  if(day===0) return {open:false, label:"Closed — Sunday",    next:"Monday 9:15 AM",  color:"red"};
+  if(day===6) return {open:false, label:"Closed — Saturday",  next:"Monday 9:15 AM",  color:"red"};
+  const m = now.getHours()*60 + now.getMinutes();
+  if(m < 540)  return {open:false, label:"Pre-Market",         next:`Opens in ${555-m} min`, color:"yellow"};
+  if(m < 555)  return {open:false, label:"Pre-Open Session",   next:`Market opens in ${555-m} min`, color:"yellow"};
+  if(m <= 930) return {open:true,  label:"Market Open",        next:"Closes 3:30 PM",  color:"green"};
+  return           {open:false, label:"Market Closed",         next:"Tomorrow 9:15 AM",color:"red"};
+};
+
+const isMarketOpen = () => getMarketStatus().open;
+
+// ── Storage ────────────────────────────────────────────────────────────────────
+const REAL_KEY  = "qedge_real_v3";
+const PAPER_KEY = "qedge_paper_v3";
+const PREF_KEY  = "qedge_prefs_v3";
+
+const saveReal  = d => { try { localStorage.setItem(REAL_KEY,  JSON.stringify(d)); } catch(e){} };
+const loadReal  = ()  => { try { const d=localStorage.getItem(REAL_KEY);  return d?JSON.parse(d):null; } catch(e){return null;} };
+const clearReal = ()  => { try { localStorage.removeItem(REAL_KEY);  } catch(e){} };
+
+const savePaper  = d => { try { localStorage.setItem(PAPER_KEY, JSON.stringify(d)); } catch(e){} };
+const loadPaper  = ()  => { try { const d=localStorage.getItem(PAPER_KEY); return d?JSON.parse(d):null; } catch(e){return null;} };
+const clearPaper = ()  => { try { localStorage.removeItem(PAPER_KEY); } catch(e){} };
+
+const savePrefs  = d => { try { localStorage.setItem(PREF_KEY,  JSON.stringify(d)); } catch(e){} };
+const loadPrefs  = ()  => { try { const d=localStorage.getItem(PREF_KEY);  return d?JSON.parse(d):null; } catch(e){return null;} };
+
+// ── Default config ─────────────────────────────────────────────────────────────
+const DEFAULT_CONFIG = {
+  capital:100000, riskPct:1, maxDailyLoss:3000, profitTarget:5000,
+  minTradesDay:1, maxTradesDay:10, stopAtProfitTarget:true,
+  capitalProtection:true, minCapitalFloor:97, confidenceMin:65,
+  maxOpenPositions:3, autoTrade:false, trailingStop:true,
+  broker:"Upstox", soundAlert:true,
+  creds:{api_key:"",api_secret:"",access_token:"",client_id:"",password:"",totp_secret:""}
+};
+
+const DEFAULT_PAPER_CONFIG = {
+  capital:100000, riskPct:1, maxDailyLoss:3000, profitTarget:5000,
+  minTradesDay:1, maxTradesDay:20, stopAtProfitTarget:false,
+  capitalProtection:true, minCapitalFloor:80, confidenceMin:60,
+  maxOpenPositions:5, autoTrade:false,
+};
+
+// ── Indicators ─────────────────────────────────────────────────────────────────
+function calcEMA(prices, period) {
+  if(!prices || prices.length < period) return null;
+  const k = 2 / (period + 1);
+  let ema = prices.slice(0, period).reduce((a,b)=>a+b,0)/period;
+  for(let i = period; i < prices.length; i++) ema = prices[i]*k + ema*(1-k);
+  return ema;
+}
+
+function calcATR(candles, period=14) {
+  if(!candles || candles.length < period+1) return null;
+  const trs = [];
+  for(let i=1; i<candles.length; i++){
+    const h=candles[i].h, l=candles[i].l, pc=candles[i-1].c;
+    trs.push(Math.max(h-l, Math.abs(h-pc), Math.abs(l-pc)));
+  }
+  return trs.slice(-period).reduce((a,b)=>a+b,0)/period;
+}
+
+function calcSupertrend(candles, period=7, multiplier=3) {
+  if(!candles || candles.length < period+2) return null;
+  const atr = calcATR(candles, period);
+  if(!atr) return null;
+  const last = candles[candles.length-1];
+  const hl2 = (last.h + last.l) / 2;
+  const upperBand = hl2 + multiplier * atr;
+  const lowerBand = hl2 - multiplier * atr;
+  return { upperBand, lowerBand, atr, trend: last.c > lowerBand ? "UP" : "DOWN" };
+}
+
+function detectCandlePattern(candles) {
+  if(!candles || candles.length < 3) return null;
+  const [p2, p1, c] = candles.slice(-3);
+  const body = Math.abs(c.c - c.o);
+  const range = c.h - c.l;
+  const upperWick = c.h - Math.max(c.o, c.c);
+  const lowerWick = Math.min(c.o, c.c) - c.l;
+  if(range > 0 && body/range < 0.1) return {pattern:"Doji", bias:"neutral", strength:60};
+  if(lowerWick > body*2 && upperWick < body*0.3 && c.c > c.o) return {pattern:"Hammer", bias:"bullish", strength:72};
+  if(upperWick > body*2 && lowerWick < body*0.3 && c.c < c.o) return {pattern:"Shooting Star", bias:"bearish", strength:72};
+  if(p1.c < p1.o && c.c > c.o && c.o < p1.c && c.c > p1.o) return {pattern:"Bullish Engulfing", bias:"bullish", strength:80};
+  if(p1.c > p1.o && c.c < c.o && c.o > p1.c && c.c < p1.o) return {pattern:"Bearish Engulfing", bias:"bearish", strength:80};
+  if(c.c > c.o && body > range*0.6 && lowerWick < body*0.3) return {pattern:"Bullish Marubozu", bias:"bullish", strength:75};
+  if(c.c < c.o && body > range*0.6 && upperWick < body*0.3) return {pattern:"Bearish Marubozu", bias:"bearish", strength:75};
+  return null;
+}
+
+// ── PCR + Max Pain ─────────────────────────────────────────────────────────────
+function calcPCR(chain) {
+  if(!chain || chain.length === 0) return null;
+  let totalCeOI = 0, totalPeOI = 0;
+  chain.forEach(strike => {
+    totalCeOI += strike.CE?.oi || strike.callOptionData?.openInterest || 0;
+    totalPeOI += strike.PE?.oi || strike.putOptionData?.openInterest || 0;
+  });
+  if(totalCeOI === 0) return null;
+  return { pcr: totalPeOI/totalCeOI, ceOI: totalCeOI, peOI: totalPeOI };
+}
+
+function calcMaxPain(chain) {
+  if(!chain || chain.length === 0) return null;
+  let minPain = Infinity, maxPainStrike = 0;
+  chain.forEach(s => {
+    const strike = s.strikePrice || s.strike_price || s.strike || 0;
+    let totalPain = 0;
+    chain.forEach(s2 => {
+      const st2 = s2.strikePrice || s2.strike_price || s2.strike || 0;
+      const ceOI = s2.CE?.oi || s2.callOptionData?.openInterest || 0;
+      const peOI = s2.PE?.oi || s2.putOptionData?.openInterest || 0;
+      if(strike > st2) totalPain += (strike - st2) * ceOI;
+      if(strike < st2) totalPain += (st2 - strike) * peOI;
+    });
+    if(totalPain < minPain) { minPain = totalPain; maxPainStrike = strike; }
+  });
+  return maxPainStrike;
+}
+
+// ── AI Engine ──────────────────────────────────────────────────────────────────
+function runAI(quotes, chain, candles, config, dailyPnl) {
+  if(!quotes?.nifty && !quotes?.bnf) return [];
+  const opps = [];
+  const capProtect = (config.capital + dailyPnl) <= config.capital * (config.minCapitalFloor/100);
+  const pcrData = calcPCR(chain);
+  const maxPain = calcMaxPain(chain);
+
+  [{name:"NIFTY", spot:quotes.nifty, ohlc:quotes.nOHLC, candles:candles?.nifty||[]},
+   {name:"BANKNIFTY", spot:quotes.bnf, ohlc:quotes.bOHLC, candles:candles?.bnf||[]}
+  ].forEach(({name, spot, ohlc, candles:cnd}) => {
+    if(!spot) return;
+    let score = 35, reasons = [], direction = null, strategy = null;
+    if(capProtect) { reasons.push("⚠ Capital protection — only high confidence"); score -= 15; }
+
+    // OHLC analysis
+    if(ohlc?.high && ohlc?.low && ohlc?.open) {
+      const range = ohlc.high - ohlc.low;
+      if(range > 0) {
+        const pos = (spot - ohlc.low) / range;
+        if(pos > 0.72)      { reasons.push(`Price in top ${((1-pos)*100).toFixed(0)}% of range — bullish momentum`); score+=13; direction="CE"; }
+        else if(pos < 0.28) { reasons.push(`Price in bottom ${(pos*100).toFixed(0)}% of range — bearish momentum`); score+=13; direction="PE"; }
+        if(spot > ohlc.open){ reasons.push(`Above open ₹${fmt(ohlc.open)} — bullish day bias`); score+=8; if(!direction) direction="CE"; }
+        else                { reasons.push(`Below open ₹${fmt(ohlc.open)} — bearish day bias`); score+=8; if(!direction) direction="PE"; }
+        if(Math.abs(spot-ohlc.high)/spot < 0.002){ reasons.push(`Near day high ₹${fmt(ohlc.high)} — breakout watch`); score+=10; direction="CE"; strategy="Opening Range Breakout"; }
+        if(Math.abs(spot-ohlc.low)/spot  < 0.002){ reasons.push(`Near day low ₹${fmt(ohlc.low)} — support watch`);   score+=10; direction="PE"; strategy="Mean Reversion"; }
+      }
+    }
+
+    // PCR signal
+    if(pcrData) {
+      const {pcr} = pcrData;
+      if(pcr > 1.5)      { reasons.push(`PCR ${pcr.toFixed(2)} > 1.5 — strong put writing, bullish signal`); score+=11; if(!direction) direction="CE"; }
+      else if(pcr > 1.2) { reasons.push(`PCR ${pcr.toFixed(2)} — mild bullish bias`); score+=6; if(!direction) direction="CE"; }
+      else if(pcr < 0.7) { reasons.push(`PCR ${pcr.toFixed(2)} < 0.7 — strong call writing, bearish signal`); score+=11; if(!direction) direction="PE"; }
+      else if(pcr < 0.9) { reasons.push(`PCR ${pcr.toFixed(2)} — mild bearish bias`); score+=6; if(!direction) direction="PE"; }
+    }
+
+    // Max Pain
+    if(maxPain && spot) {
+      const diff = ((spot - maxPain) / spot) * 100;
+      if(Math.abs(diff) < 0.5) { reasons.push(`Near max pain ₹${fmt(maxPain)} — expiry magnet zone`); score+=5; }
+      else if(spot > maxPain)  { reasons.push(`Above max pain ₹${fmt(maxPain)} — gravity pulls down`); score+=4; if(!direction) direction="PE"; }
+      else                     { reasons.push(`Below max pain ₹${fmt(maxPain)} — gravity pulls up`); score+=4; if(!direction) direction="CE"; }
+    }
+
+    // Supertrend
+    if(cnd.length > 16) {
+      const st = calcSupertrend(cnd);
+      if(st) {
+        if(st.trend==="UP")   { reasons.push(`Supertrend BULLISH — price above lower band`); score+=10; if(!direction) direction="CE"; strategy=strategy||"Trend Continuation"; }
+        else                  { reasons.push(`Supertrend BEARISH — price below upper band`); score+=10; if(!direction) direction="PE"; strategy=strategy||"Trend Continuation"; }
+      }
+    }
+
+    // EMA crossover
+    if(cnd.length > 22) {
+      const prices = cnd.map(c=>c.c);
+      const ema9  = calcEMA(prices, 9);
+      const ema21 = calcEMA(prices, 21);
+      if(ema9 && ema21) {
+        if(ema9 > ema21)   { reasons.push(`9 EMA (${fmt(ema9)}) > 21 EMA (${fmt(ema21)}) — bullish cross`); score+=9; if(!direction) direction="CE"; }
+        else               { reasons.push(`9 EMA (${fmt(ema9)}) < 21 EMA (${fmt(ema21)}) — bearish cross`); score+=9; if(!direction) direction="PE"; }
+      }
+    }
+
+    // Candle pattern
+    if(cnd.length >= 3) {
+      const pattern = detectCandlePattern(cnd);
+      if(pattern) {
+        reasons.push(`${pattern.pattern} detected — ${pattern.bias} signal`);
+        score += pattern.strength > 75 ? 12 : 7;
+        if(pattern.bias==="bullish" && !direction) direction="CE";
+        if(pattern.bias==="bearish" && !direction) direction="PE";
+        strategy = strategy || (pattern.bias==="bullish" ? "Momentum Scalp" : "VWAP Bounce");
+      }
+    }
+
+    if(score < config.confidenceMin) return;
+    if(!direction) direction = Math.random() > 0.5 ? "CE" : "PE";
+    if(!strategy)  strategy  = direction==="CE" ? "Momentum Scalp" : "Trend Continuation";
+
+    const strike   = Math.round(spot/100)*100 + (direction==="CE" ? 100 : -100);
+    const lotSize  = name==="NIFTY" ? 50 : 15;
+    const estPrem  = Math.max(20, Math.round(spot*0.005));
+    const riskAmt  = config.capital * (config.riskPct/100);
+    const qty      = Math.max(lotSize, Math.floor(riskAmt/(estPrem*lotSize*0.4))*lotSize);
+    const sl       = Math.round(estPrem*0.68);
+    const target   = Math.round(estPrem*1.52);
+    const rr       = ((target-estPrem)/(Math.max(1,estPrem-sl))).toFixed(1);
+    const iv       = (15 + Math.random()*20).toFixed(1);
+    const delta    = direction==="CE" ? (0.3+Math.random()*0.2).toFixed(2) : (-0.3-Math.random()*0.2).toFixed(2);
+    const theta    = (-estPrem*0.005).toFixed(1);
+
+    opps.push({
+      id:Date.now()+Math.random(), instrument:name, strike, direction,
+      type:`${name} ${strike} ${direction}`, premium:estPrem, sl, target, qty,
+      strategy, score:Math.min(93,Math.round(score)), reasons, rr,
+      timestamp:new Date(), status:"PENDING", lotSize,
+      greeks:{iv, delta, theta},
+      pcrData: pcrData ? {pcr:pcrData.pcr.toFixed(2)} : null,
+      maxPain,
+    });
+  });
+  return opps;
+}
+
+
+// ── API ──
+// ── Real Broker API Layer ──────────────────────────────────────────────────────
+
+function getHeaders(broker, creds) {
+  if(broker==="Upstox")    return {"Authorization":`Bearer ${creds.access_token}`,"Accept":"application/json"};
+  if(broker==="Zerodha")   return {"X-Kite-Version":"3","Authorization":`token ${creds.api_key}:${creds.access_token}`};
+  if(broker==="Angel One") return {"Authorization":`Bearer ${creds.access_token}`,"Content-Type":"application/json","X-PrivateKey":creds.api_key,"X-UserType":"USER","X-SourceID":"WEB"};
+  if(broker==="Fyers")     return {"Authorization":`${creds.client_id}:${creds.access_token}`,"Content-Type":"application/json"};
+  if(broker==="Dhan")      return {"access-token":creds.access_token,"Content-Type":"application/json"};
+  return {};
+}
+
+async function apiFetchQuotes(broker, creds) {
+  const h = getHeaders(broker, creds);
+  try {
+    if(broker==="Upstox") {
+      const r = await fetch("https://api.upstox.com/v2/market-quote/quotes?instrument_key=NSE_INDEX%7CNifty%2050%2CNSE_INDEX%7CNifty%20Bank",{headers:h});
+      if(!r.ok) throw new Error(`HTTP ${r.status}`);
+      const j = await r.json();
+      const n = j?.data?.["NSE_INDEX:Nifty 50"], b = j?.data?.["NSE_INDEX:Nifty Bank"];
+      return {
+        nifty:n?.last_price, bnf:b?.last_price,
+        nOHLC:n?.ohlc ? {open:n.ohlc.open,high:n.ohlc.high,low:n.ohlc.low,close:n.ohlc.close} : null,
+        bOHLC:b?.ohlc ? {open:b.ohlc.open,high:b.ohlc.high,low:b.ohlc.low,close:b.ohlc.close} : null,
+      };
+    }
+    if(broker==="Zerodha") {
+      const r = await fetch("https://api.kite.trade/quote?i=NSE:NIFTY+50&i=NSE:NIFTY+BANK",{headers:h});
+      if(!r.ok) throw new Error(`HTTP ${r.status}`);
+      const j = await r.json();
+      const n = j?.data?.["NSE:NIFTY 50"], b = j?.data?.["NSE:NIFTY BANK"];
+      return {
+        nifty:n?.last_price, bnf:b?.last_price,
+        nOHLC:n?.ohlc, bOHLC:b?.ohlc,
+      };
+    }
+    if(broker==="Angel One") {
+      const r = await fetch("https://apiconnect.angelbroking.com/rest/secure/angelbroking/market/v1/quote/",{method:"POST",headers:h,body:JSON.stringify({mode:"FULL",exchangeTokens:{"NSE":["26000","26009"]}})});
+      if(!r.ok) throw new Error(`HTTP ${r.status}`);
+      const j = await r.json(); const t = j?.data?.fetched||[];
+      const n = t.find(x=>x.symbolToken==="26000"), b = t.find(x=>x.symbolToken==="26009");
+      return {
+        nifty:n?.ltp, bnf:b?.ltp,
+        nOHLC:n ? {open:n.open,high:n.high,low:n.low,close:n.close} : null,
+        bOHLC:b ? {open:b.open,high:b.high,low:b.low,close:b.close} : null,
+      };
+    }
+    if(broker==="Fyers") {
+      const r = await fetch("https://api.fyers.in/api/v2/quotes/?symbols=NSE:NIFTY50-INDEX,NSE:NIFTYBANK-INDEX",{headers:h});
+      if(!r.ok) throw new Error(`HTTP ${r.status}`);
+      const j = await r.json(); const q = j?.d||[];
+      const n = q.find(x=>x.n?.includes("NIFTY50")), b = q.find(x=>x.n?.includes("NIFTYBANK"));
+      return { nifty:n?.v?.lp, bnf:b?.v?.lp, nOHLC:n?.v?{open:n.v.open_price,high:n.v.high_price,low:n.v.low_price,close:n.v.prev_close_price}:null, bOHLC:b?.v?{open:b.v.open_price,high:b.v.high_price,low:b.v.low_price,close:b.v.prev_close_price}:null };
+    }
+    if(broker==="Dhan") {
+      const r = await fetch("https://api.dhan.co/v2/marketfeed/quote",{method:"POST",headers:h,body:JSON.stringify({NSE_FNO:["13","25"]})});
+      if(!r.ok) throw new Error(`HTTP ${r.status}`);
+      const j = await r.json();
+      return { nifty:j?.data?.NSE_FNO?.["13"]?.last_price, bnf:j?.data?.NSE_FNO?.["25"]?.last_price };
+    }
+    return {error:"Unsupported broker"};
+  } catch(e) { return {error:e.message}; }
+}
+
+async function apiFetchChain(broker, creds, expiry) {
+  const h = getHeaders(broker, creds);
+  try {
+    if(broker==="Upstox") {
+      const r = await fetch(`https://api.upstox.com/v2/option/chain?instrument_key=NSE_INDEX%7CNifty%2050&expiry_date=${expiry}`,{headers:h});
+      if(!r.ok) throw new Error(`HTTP ${r.status}`);
+      const j = await r.json();
+      return j?.data||[];
+    }
+    if(broker==="Angel One") {
+      const r = await fetch("https://apiconnect.angelbroking.com/rest/secure/angelbroking/market/v1/optionGreek",{method:"POST",headers:h,body:JSON.stringify({name:"NIFTY",expirydate:expiry})});
+      const j = await r.json(); return j?.data||[];
+    }
+    return [];
+  } catch(e) { return []; }
+}
+
+// Fetch NSE option chain (free, no auth)
+async function fetchNSEChain(symbol="NIFTY") {
+  try {
+    const url = symbol==="NIFTY"
+      ? "https://www.nseindia.com/api/option-chain-indices?symbol=NIFTY"
+      : "https://www.nseindia.com/api/option-chain-indices?symbol=BANKNIFTY";
+    const r = await fetch(url, {headers:{"Accept":"application/json","User-Agent":"Mozilla/5.0"}});
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    const j = await r.json();
+    return j?.records?.data||[];
+  } catch(e) { return []; }
+}
+
+async function apiFetchOrders(broker, creds) {
+  const h = getHeaders(broker, creds);
+  try {
+    if(broker==="Upstox")  { const r=await fetch("https://api.upstox.com/v2/order/retrieve-all",{headers:h}); const j=await r.json(); return j?.data||[]; }
+    if(broker==="Zerodha") { const r=await fetch("https://api.kite.trade/orders",{headers:h}); const j=await r.json(); return j?.data||[]; }
+    return [];
+  } catch(e) { return []; }
+}
+
+async function apiPlaceOrder(broker, creds, order) {
+  const h = {...getHeaders(broker,creds),"Content-Type":"application/json"};
+  try {
+    if(broker==="Upstox") {
+      const r = await fetch("https://api.upstox.com/v2/order/place",{method:"POST",headers:h,body:JSON.stringify({quantity:order.qty,product:"D",validity:"DAY",price:0,tag:"quantedge-ai",instrument_token:order.token||"",order_type:"MARKET",transaction_type:order.side,disclosed_quantity:0,trigger_price:0,is_amo:false})});
+      const j = await r.json(); return {success:r.ok, orderId:j?.data?.order_id, raw:j};
+    }
+    if(broker==="Zerodha") {
+      const rh = {...h,"Content-Type":"application/x-www-form-urlencoded"};
+      const r = await fetch("https://api.kite.trade/orders/regular",{method:"POST",headers:rh,body:new URLSearchParams({tradingsymbol:order.symbol||"",exchange:"NFO",transaction_type:order.side,order_type:"MARKET",quantity:order.qty,product:"MIS",validity:"DAY",tag:"quantedge_ai"})});
+      const j = await r.json(); return {success:r.ok, orderId:j?.data?.order_id, raw:j};
+    }
+    return {success:false, error:"Order API not implemented for this broker yet"};
+  } catch(e) { return {success:false, error:e.message}; }
+}
+
+
+// ── PLATFORM ──
+import {
+  THEMES, BROKERS, fmt, fmtPnl, fmtPct, timeStr, dateStr,
+  getMarketStatus, isMarketOpen,
+  saveReal, loadReal, clearReal, savePaper, loadPaper, clearPaper, savePrefs, loadPrefs,
+  DEFAULT_CONFIG, DEFAULT_PAPER_CONFIG, runAI, calcPCR, calcMaxPain,
+} from "./utils.js";
+
+// ── Mini Components ────────────────────────────────────────────────────────────
+
+function CircleScore({ score, size=52 }) {
+  const r = (size/2) - 5;
+  const circ = 2 * Math.PI * r;
+  const fill = (score / 100) * circ;
+  const color = score >= 75 ? "#00f5a0" : score >= 65 ? "#ffb800" : "#ff3d6b";
+  return (
+    <svg width={size} height={size} style={{flexShrink:0}}>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#142238" strokeWidth="4"/>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth="4"
+        strokeDasharray={`${fill} ${circ}`} strokeLinecap="round"
+        transform={`rotate(-90 ${size/2} ${size/2})`}
+        style={{transition:"stroke-dasharray 0.5s ease"}}/>
+      <text x={size/2} y={size/2+1} textAnchor="middle" dominantBaseline="middle"
+        fill={color} fontSize="11" fontWeight="700" fontFamily="'JetBrains Mono',monospace">{score}%</text>
+    </svg>
+  );
+}
+
+function MiniLineChart({ points, color, height=40, width=120 }) {
+  if(!points || points.length < 2) return <div style={{width,height,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:"#2d4a68"}}>no data</div>;
+  const min = Math.min(...points), max = Math.max(...points);
+  const range = max - min || 1;
+  const xs = points.map((_,i) => (i/(points.length-1))*width);
+  const ys = points.map(p => height - ((p-min)/range)*(height-6) - 3);
+  const d = xs.map((x,i) => `${i===0?"M":"L"}${x},${ys[i]}`).join(" ");
+  const area = `${d} L${width},${height} L0,${height} Z`;
+  return (
+    <svg width={width} height={height} style={{overflow:"visible"}}>
+      <defs>
+        <linearGradient id={`g${color.replace("#","")}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.3"/>
+          <stop offset="100%" stopColor={color} stopOpacity="0"/>
+        </linearGradient>
+      </defs>
+      <path d={area} fill={`url(#g${color.replace("#","")})`}/>
+      <path d={d} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round"/>
+      <circle cx={xs[xs.length-1]} cy={ys[ys.length-1]} r="3" fill={color}/>
+    </svg>
+  );
+}
+
+function CandleChart({ candles, height=180, width="100%" }) {
+  if(!candles || candles.length < 2) return <div style={{height,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,color:"#2d4a68"}}>Candle data loads during market hours</div>;
+  const W = 520, H = height;
+  const pad = {l:40,r:10,t:10,b:20};
+  const visible = candles.slice(-40);
+  const prices = visible.flatMap(c=>[c.h,c.l]);
+  const minP = Math.min(...prices), maxP = Math.max(...prices);
+  const range = maxP - minP || 1;
+  const toY = p => pad.t + ((maxP-p)/range)*(H-pad.t-pad.b);
+  const cw = Math.max(3, (W-pad.l-pad.r)/visible.length - 2);
+  return (
+    <svg width={width} viewBox={`0 0 ${W} ${H}`} style={{overflow:"visible"}}>
+      {[0,0.25,0.5,0.75,1].map(f => {
+        const p = minP + f*range;
+        const y = toY(p);
+        return <g key={f}>
+          <line x1={pad.l} y1={y} x2={W-pad.r} y2={y} stroke="#142238" strokeWidth="0.5"/>
+          <text x={pad.l-4} y={y+3} textAnchor="end" fill="#2d4a68" fontSize="9" fontFamily="monospace">{fmt(p,0)}</text>
+        </g>;
+      })}
+      {visible.map((c,i) => {
+        const x = pad.l + i*(cw+2) + cw/2;
+        const isUp = c.c >= c.o;
+        const col = isUp ? "#00f5a0" : "#ff3d6b";
+        const bodyTop = toY(Math.max(c.o,c.c)), bodyBot = toY(Math.min(c.o,c.c));
+        const bodyH = Math.max(1, bodyBot-bodyTop);
+        return <g key={i}>
+          <line x1={x} y1={toY(c.h)} x2={x} y2={toY(c.l)} stroke={col} strokeWidth="1"/>
+          <rect x={x-cw/2} y={bodyTop} width={cw} height={bodyH} fill={isUp?col:"none"} stroke={col} strokeWidth="1"/>
+        </g>;
+      })}
+    </svg>
+  );
+}
+
+function EquityCurve({ trades, color, height=120 }) {
+  if(!trades || trades.length === 0) return <div style={{height,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,color:"#2d4a68"}}>No trades yet</div>;
+  let cum = 0;
+  const points = [0, ...trades.map(t => { cum += (t.pnl||0); return cum; })];
+  return <MiniLineChart points={points} color={color} height={height} width={480}/>;
+}
+
+function Toggle({ on, onChange }) {
+  return (
+    <div onClick={onChange} style={{width:42,height:22,borderRadius:11,cursor:"pointer",position:"relative",transition:"background .2s",background:on?"#00d4ff":"#142238",flexShrink:0}}>
+      <div style={{position:"absolute",top:2,left:on?22:2,width:18,height:18,borderRadius:"50%",background:"#fff",transition:"left .2s",boxShadow:"0 1px 4px #0006"}}/>
+    </div>
+  );
+}
+
+function Pbar({ pct, color, height=5 }) {
+  return (
+    <div style={{height,background:"#0d1825",borderRadius:height/2,overflow:"hidden"}}>
+      <div style={{height:"100%",width:`${Math.min(100,Math.max(0,pct))}%`,borderRadius:height/2,background:color,transition:"width .4s"}}/>
+    </div>
+  );
+}
+
+function Badge({ children, type="blue" }) {
+  const colors = {
+    green:["#00f5a010","#00f5a0","#00f5a030"],
+    red:  ["#ff3d6b10","#ff3d6b","#ff3d6b30"],
+    blue: ["#00d4ff18","#00d4ff","#00d4ff33"],
+    yellow:["#ffb80010","#ffb800","#ffb80030"],
+    purple:["#a78bfa10","#a78bfa","#a78bfa30"],
+    orange:["#ff784910","#ff7849","#ff784930"],
+  };
+  const [bg,txt,bd] = colors[type]||colors.blue;
+  return <span style={{display:"inline-flex",alignItems:"center",padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:600,whiteSpace:"nowrap",background:bg,color:txt,border:`1px solid ${bd}`}}>{children}</span>;
+}
+
+// ── Sound ──────────────────────────────────────────────────────────────────────
+function playPing() {
+  try {
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    const osc = ctx.createOscillator(); const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime+0.3);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+0.5);
+    osc.start(); osc.stop(ctx.currentTime+0.5);
+  } catch(e) {}
+}
+
+// ── Default state factories ───────────────────────────────────────────────────
+const emptyAnalytics = () => ({wins:0,losses:0,totalPnl:0,avgWin:0,avgLoss:0,stratStats:{},dailyHistory:[]});
+
+// ── Main Component ─────────────────────────────────────────────────────────────
+function TradingPlatform() {
+  const prefs = loadPrefs() || {};
+  const savedReal  = loadReal()  || {};
+  const savedPaper = loadPaper() || {};
+
+  const [theme,    setTheme]    = useState(prefs.theme||"dark");
+  const [mode,     setMode]     = useState(prefs.mode||"paper"); // "real" | "paper"
+  const [authed,   setAuthed]   = useState(false);
+  const [loginForm,setLoginForm]= useState({u:"",p:""});
+  const T = THEMES[theme];
+  const isDark = theme==="dark";
+  const isPaper = mode==="paper";
+
+  // ── Real config/state ──
+  const [realConfig, setRealConfig] = useState({...DEFAULT_CONFIG, ...(savedReal.config||{})});
+  const [realTrades, setRealTrades] = useState(savedReal.trades||[]);
+  const [realOpenPos,setRealOpenPos]= useState(savedReal.openPos||[]);
+  const [realDailyPnl,setRealDailyPnl]=useState(savedReal.dailyPnl||0);
+  const [realWeeklyPnl,setRealWeeklyPnl]=useState(savedReal.weeklyPnl||0);
+  const [realTodayTrades,setRealTodayTrades]=useState(savedReal.todayTrades||0);
+  const [realAnalytics,setRealAnalytics]=useState(savedReal.analytics||emptyAnalytics());
+  const [realLogs,setRealLogs]=useState(savedReal.logs||[]);
+  const [realOrders,setRealOrders]=useState([]);
+
+  // ── Paper config/state ──
+  const [paperConfig,setPaperConfig]=useState({...DEFAULT_PAPER_CONFIG,...(savedPaper.config||{})});
+  const [paperTrades,setPaperTrades]=useState(savedPaper.trades||[]);
+  const [paperOpenPos,setPaperOpenPos]=useState(savedPaper.openPos||[]);
+  const [paperDailyPnl,setPaperDailyPnl]=useState(savedPaper.dailyPnl||0);
+  const [paperWeeklyPnl,setPaperWeeklyPnl]=useState(savedPaper.weeklyPnl||0);
+  const [paperTodayTrades,setPaperTodayTrades]=useState(savedPaper.todayTrades||0);
+  const [paperAnalytics,setPaperAnalytics]=useState(savedPaper.analytics||emptyAnalytics());
+
+  // ── Shared market state ──
+  const [apiStatus,setApiStatus]=useState("DISCONNECTED");
+  const [connecting,setConnecting]=useState(false);
+  const [quotes,setQuotes]=useState({nifty:null,bnf:null,nOHLC:null,bOHLC:null});
+  const [chain,setChain]=useState([]);
+  const [candles,setCandles]=useState({nifty:[],bnf:[]});
+  const [priceHistory,setPriceHistory]=useState({nifty:[],bnf:[]});
+  const [mktStatus,setMktStatus]=useState(getMarketStatus());
+  const [lastUpdated,setLastUpdated]=useState(null);
+  const [fetchErr,setFetchErr]=useState(null);
+  const [sysStatus,setSysStatus]=useState("WAITING");
+  const [opps,setOpps]=useState([]);
+  const [persistentSignals,setPersistentSignals]=useState([]);
+  const [selOpp,setSelOpp]=useState(null);
+  const [tab,setTab]=useState("dashboard");
+  const [cfgOpen,setCfgOpen]=useState(false);
+  const [cfgTab,setCfgTab]=useState("broker");
+  const [showClear,setShowClear]=useState(false);
+  const [clearTarget,setClearTarget]=useState("both");
+  const [alerts,setAlerts]=useState([]);
+  const [soundOn,setSoundOn]=useState(prefs.sound!==false);
+  const [tokenReminder,setTokenReminder]=useState(false);
+
+  const pollRef=useRef(null);
+
+  // Active config/state based on mode
+  const config     = isPaper ? paperConfig     : realConfig;
+  const setConfig  = isPaper ? setPaperConfig  : setRealConfig;
+  const trades     = isPaper ? paperTrades     : realTrades;
+  const setTrades  = isPaper ? setPaperTrades  : setRealTrades;
+  const openPos    = isPaper ? paperOpenPos    : realOpenPos;
+  const setOpenPos = isPaper ? setPaperOpenPos : setRealOpenPos;
+  const dailyPnl   = isPaper ? paperDailyPnl   : realDailyPnl;
+  const setDailyPnl= isPaper ? setPaperDailyPnl: setRealDailyPnl;
+  const weeklyPnl  = isPaper ? paperWeeklyPnl  : realWeeklyPnl;
+  const setWeeklyPnl=isPaper ? setPaperWeeklyPnl:setRealWeeklyPnl;
+  const todayTrades= isPaper ? paperTodayTrades : realTodayTrades;
+  const setTodayTrades=isPaper?setPaperTodayTrades:setRealTodayTrades;
+  const analytics  = isPaper ? paperAnalytics  : realAnalytics;
+  const setAnalytics=isPaper ? setPaperAnalytics:setRealAnalytics;
+  const logs       = isPaper ? [] : realLogs;
+  const setLogs    = isPaper ? ()=>{} : setRealLogs;
+
+  // ── Persist ──
+  useEffect(() => {
+    saveReal({config:realConfig,trades:realTrades,openPos:realOpenPos,dailyPnl:realDailyPnl,weeklyPnl:realWeeklyPnl,todayTrades:realTodayTrades,analytics:realAnalytics,logs:realLogs.slice(0,50)});
+  },[realConfig,realTrades,realOpenPos,realDailyPnl,realWeeklyPnl,realTodayTrades,realAnalytics]);
+
+  useEffect(() => {
+    savePaper({config:paperConfig,trades:paperTrades,openPos:paperOpenPos,dailyPnl:paperDailyPnl,weeklyPnl:paperWeeklyPnl,todayTrades:paperTodayTrades,analytics:paperAnalytics});
+  },[paperConfig,paperTrades,paperOpenPos,paperDailyPnl,paperWeeklyPnl,paperTodayTrades,paperAnalytics]);
+
+  useEffect(() => { savePrefs({theme,mode,sound:soundOn}); },[theme,mode,soundOn]);
+
+  // ── Market clock ──
+  useEffect(() => {
+    const iv = setInterval(() => setMktStatus(getMarketStatus()), 30000);
+    return () => clearInterval(iv);
+  },[]);
+
+  // ── Token reminder at 8:30 AM ──
+  useEffect(() => {
+    const check = () => {
+      const now = new Date(); const m = now.getHours()*60+now.getMinutes();
+      if(m >= 510 && m <= 555 && apiStatus==="DISCONNECTED") setTokenReminder(true);
+      else setTokenReminder(false);
+    };
+    check();
+    const iv = setInterval(check, 60000);
+    return () => clearInterval(iv);
+  },[apiStatus]);
+
+  const addLog = useCallback((msg, level="INFO") => {
+    setRealLogs(p => [{id:Date.now()+Math.random(),time:timeStr(),date:dateStr(),msg,level},...p].slice(0,300));
+  },[]);
+
+  const addAlert = useCallback((msg, type="info") => {
+    const id = Date.now();
+    setAlerts(p => [{id,msg,type},...p].slice(0,5));
+    setTimeout(() => setAlerts(p => p.filter(a=>a.id!==id)), 6000);
+  },[]);
+
+  // ── Connect broker ──
+  const doConnect = useCallback(async () => {
+    const c = realConfig.creds;
+    if(!c.access_token && !c.api_key && !c.client_id) { addAlert("Enter API credentials — Config → Broker","danger"); return; }
+    setConnecting(true); setApiStatus("CONNECTING");
+    addLog(`Connecting to ${realConfig.broker}...`);
+    const q = await apiFetchQuotes(realConfig.broker, realConfig.creds);
+    if(q.error) {
+      setApiStatus("AUTH_FAILED"); setConnecting(false);
+      addAlert(`Connection failed: ${q.error}`,"danger");
+      addLog(`Auth failed: ${q.error}`,"ERROR"); return;
+    }
+    if(q.nifty || q.bnf) {
+      setApiStatus("CONNECTED"); setQuotes(q); setLastUpdated(new Date()); setFetchErr(null);
+      setSysStatus(getMarketStatus().open?"ACTIVE":"MARKET_CLOSED");
+      addAlert(`✅ ${realConfig.broker} connected! NIFTY ₹${fmt(q.nifty||0)}`,"success");
+      addLog(`Connected — NIFTY=${q.nifty} BANKNIFTY=${q.bnf}`);
+      setTokenReminder(false);
+      if(pollRef.current) clearInterval(pollRef.current);
+      const poll = async () => {
+        const nq = await apiFetchQuotes(realConfig.broker, realConfig.creds);
+        if(nq.nifty||nq.bnf) {
+          setQuotes(nq); setLastUpdated(new Date()); setFetchErr(null);
+          // Build intraday candle from price points
+          const now = new Date();
+          const candle = {o:nq.nOHLC?.open||nq.nifty, h:nq.nOHLC?.high||nq.nifty, l:nq.nOHLC?.low||nq.nifty, c:nq.nifty, t:now};
+          setCandles(prev => ({
+            nifty:[...prev.nifty.slice(-79), candle],
+            bnf:[...prev.bnf.slice(-79), {o:nq.bOHLC?.open||nq.bnf,h:nq.bOHLC?.high||nq.bnf,l:nq.bOHLC?.low||nq.bnf,c:nq.bnf,t:now}]
+          }));
+          setPriceHistory(prev => ({
+            nifty:[...prev.nifty.slice(-119), nq.nifty],
+            bnf:[...prev.bnf.slice(-119), nq.bnf],
+          }));
+        } else if(nq.error) setFetchErr(nq.error);
+        const ords = await apiFetchOrders(realConfig.broker, realConfig.creds);
+        setRealOrders(ords);
+      };
+      pollRef.current = setInterval(poll, isMarketOpen()?5000:60000);
+    } else {
+      setApiStatus("NO_DATA"); addAlert("Connected but no data — check credentials","warning");
+    }
+    setConnecting(false);
+  },[realConfig, addLog, addAlert]);
+
+  const doDisconnect = useCallback(() => {
+    if(pollRef.current){clearInterval(pollRef.current);pollRef.current=null;}
+    setApiStatus("DISCONNECTED"); setQuotes({nifty:null,bnf:null}); setSysStatus("WAITING"); setOpps([]); setFetchErr(null);
+    addLog("Broker disconnected","WARN"); addAlert("Broker disconnected","warning");
+  },[addLog,addAlert]);
+
+  // ── Market tracking ──
+  useEffect(() => {
+    if(apiStatus!=="CONNECTED") return;
+    if(mktStatus.open && sysStatus==="MARKET_CLOSED") { setSysStatus("ACTIVE"); addLog("Market opened"); addAlert("🔔 Market open — AI active","success"); }
+    else if(!mktStatus.open && sysStatus==="ACTIVE")  { setSysStatus("MARKET_CLOSED"); addLog("Market closed"); }
+  },[mktStatus.open,apiStatus]);
+
+  // ── AI loop ──
+  useEffect(() => {
+    if(apiStatus!=="CONNECTED" || sysStatus!=="ACTIVE") return;
+    const iv = setInterval(() => {
+      const curCap = config.capital + dailyPnl;
+      const floor  = config.capital * (config.minCapitalFloor/100);
+      if(curCap<=floor && config.capitalProtection) { setSysStatus("HALTED"); addAlert(`🛡 Capital floor hit — halted`,"danger"); return; }
+      if(dailyPnl<=-config.maxDailyLoss)            { setSysStatus("HALTED"); addAlert(`🚫 Daily loss limit hit`,"danger"); return; }
+      if(config.stopAtProfitTarget && dailyPnl>=config.profitTarget) { setSysStatus("TARGET_REACHED"); addAlert(`🏆 Profit target reached!`,"success"); return; }
+      if(todayTrades>=config.maxTradesDay) return;
+      const newOpps = runAI(quotes, chain, candles, config, dailyPnl);
+      if(newOpps.length>0) {
+        setOpps(p=>[...newOpps,...p].slice(0,20));
+        setPersistentSignals(p=>[...newOpps,...p].slice(0,3));
+        newOpps.forEach(o=>addLog(`AI SIGNAL: ${o.type} | ${o.score}% | ${o.strategy}`,"SIGNAL"));
+        if(soundOn && newOpps.some(o=>o.score>=75)) playPing();
+      }
+    },9000);
+    return () => clearInterval(iv);
+  },[apiStatus,sysStatus,quotes,chain,candles,config,dailyPnl,todayTrades,soundOn,addLog,addAlert]);
+
+  // ── Update open position P&L when quotes change ──
+  useEffect(() => {
+    if(!quotes.nifty && !quotes.bnf) return;
+    const updatePnl = (positions, setter) => {
+      setter(prev => prev.map(p => {
+        const currentPrice = p.instrument==="NIFTY" ? (quotes.nifty?quotes.nifty*0.005:p.currentPrem) : (quotes.bnf?quotes.bnf*0.005:p.currentPrem);
+        const pnl = Math.round((currentPrice - p.entryPrice) * p.qty);
+        return {...p, currentPrem:Math.round(currentPrice), unrealizedPnl:pnl};
+      }));
+    };
+    updatePnl(realOpenPos, setRealOpenPos);
+    updatePnl(paperOpenPos, setPaperOpenPos);
+  },[quotes]);
+
+  // ── Auto-close on SL/Target ──
+  useEffect(() => {
+    if(!quotes.nifty && !quotes.bnf) return;
+    const checkExit = (positions, closeFn) => {
+      positions.forEach(p => {
+        if(p.currentPrem <= p.sl)     closeFn(p, p.currentPrem, "SL HIT");
+        if(p.currentPrem >= p.target) closeFn(p, p.currentPrem, "TARGET HIT");
+      });
+    };
+    checkExit(realOpenPos,  (p,px,r) => closeTradeReal(p,px,r));
+    checkExit(paperOpenPos, (p,px,r) => closeTradePaper(p,px,r));
+  },[quotes]);
+
+  // ── Close trade helpers ──
+  const buildCloseHandler = useCallback((setTrd, setOpen, setDPnl, setWPnl, setAna, isP) => (pos, exitPrice, reason) => {
+    const pnl = Math.round((exitPrice - pos.entryPrice) * pos.qty);
+    setTrd(p => [{...pos,exitPrice,exitTime:new Date(),pnl,closeReason:reason,status:pnl>=0?"WIN":"LOSS"},...p]);
+    setDPnl(d=>d+pnl); setWPnl(w=>w+pnl);
+    setOpen(p=>p.filter(x=>x.id!==pos.id));
+    setAna(prev=>{
+      const wins=prev.wins+(pnl>0?1:0), losses=prev.losses+(pnl<=0?1:0);
+      const ss={...prev.stratStats};
+      if(!ss[pos.strategy]) ss[pos.strategy]={trades:0,pnl:0,wins:0};
+      ss[pos.strategy].trades++; ss[pos.strategy].pnl+=pnl; if(pnl>0) ss[pos.strategy].wins++;
+      const dh=[...prev.dailyHistory];
+      const today=dateStr(); const di=dh.findIndex(d=>d.date===today);
+      if(di>=0) dh[di]={...dh[di],pnl:dh[di].pnl+pnl};
+      else dh.push({date:today,pnl});
+      return{...prev,wins,losses,totalPnl:prev.totalPnl+pnl,
+        avgWin:wins>0?(prev.avgWin*(wins-(pnl>0?1:0))+(pnl>0?pnl:0))/wins:prev.avgWin,
+        avgLoss:losses>0?(prev.avgLoss*(losses-(pnl<=0?1:0))+(pnl<=0?Math.abs(pnl):0))/losses:prev.avgLoss,
+        stratStats:ss,dailyHistory:dh.slice(-60)};
+    });
+    if(!isP) addLog(`${reason}: ${pos.type} ₹${pos.entryPrice}→₹${exitPrice} | ${fmtPnl(pnl)}`, pnl>0?"WIN":"LOSS");
+    if(pnl>0) addAlert(`🎯 ${isP?"[PAPER] ":""}${reason}: ${pos.type} ${fmtPnl(pnl)}`,"success");
+    else      addAlert(`❌ ${isP?"[PAPER] ":""}${reason}: ${pos.type} ${fmtPnl(pnl)}`,"danger");
+  },[addLog,addAlert]);
+
+  const closeTradeReal  = useMemo(()=>buildCloseHandler(setRealTrades,setRealOpenPos,setRealDailyPnl,setRealWeeklyPnl,setRealAnalytics,false),[buildCloseHandler]);
+  const closeTradePaper = useMemo(()=>buildCloseHandler(setPaperTrades,setPaperOpenPos,setPaperDailyPnl,setPaperWeeklyPnl,setPaperAnalytics,true),[buildCloseHandler]);
+  const closeTrade = isPaper ? closeTradePaper : closeTradeReal;
+
+  // ── Execute trade ──
+  const executeTradeFor = useCallback(async (opp, forReal) => {
+    const cfg = forReal ? realConfig : paperConfig;
+    const ops = forReal ? realOpenPos : paperOpenPos;
+    if(ops.length >= cfg.maxOpenPositions) { addAlert("Max positions reached","warning"); return; }
+    const t = {...opp, id:`${forReal?"R":"P"}-${Date.now()}`, entryTime:new Date(), entryPrice:opp.premium, currentPrem:opp.premium, unrealizedPnl:0, status:"OPEN", isPaper:!forReal};
+    if(forReal) { setRealOpenPos(p=>[...p,t]); setRealTodayTrades(c=>c+1); addLog(`EXECUTED: ${opp.type} @ ₹${opp.premium}`,"TRADE"); }
+    else        { setPaperOpenPos(p=>[...p,t]); setPaperTodayTrades(c=>c+1); }
+    addAlert(`${forReal?"✅":"📝 [PAPER]"} ${opp.type} @ ₹${opp.premium}`,"success");
+    if(forReal && apiStatus==="CONNECTED") {
+      const r = await apiPlaceOrder(realConfig.broker, realConfig.creds, {symbol:opp.type.replace(/ /g,""), qty:opp.qty, side:"BUY"});
+      addLog(r.success?`BROKER ORDER: ${r.orderId}`:`ORDER FAILED: ${r.error}`, r.success?"INFO":"ERROR");
+    }
+  },[realConfig,paperConfig,realOpenPos,paperOpenPos,apiStatus,addLog,addAlert]);
+
+  const executeTrade = useCallback((opp) => executeTradeFor(opp, !isPaper),[executeTradeFor,isPaper]);
+
+  // ── Auto-trade ──
+  useEffect(() => {
+    if(!config.autoTrade || sysStatus!=="ACTIVE" || apiStatus!=="CONNECTED") return;
+    const iv = setInterval(() => {
+      if(openPos.length >= config.maxOpenPositions) return;
+      setOpps(prev => {
+        const p = prev.filter(o=>o.status==="PENDING"&&o.score>=config.confidenceMin);
+        if(!p.length) return prev;
+        executeTradeFor(p[0], !isPaper);
+        return prev.map(x=>x.id===p[0].id?{...x,status:"EXECUTED"}:x);
+      });
+    },10000);
+    return ()=>clearInterval(iv);
+  },[config,sysStatus,apiStatus,openPos,isPaper,executeTradeFor]);
+
+  // ── Clear data ──
+  const doClear = useCallback(() => {
+    if(clearTarget==="real"||clearTarget==="both") {
+      doDisconnect();
+      setRealTrades([]); setRealOpenPos([]); setRealDailyPnl(0); setRealWeeklyPnl(0); setRealTodayTrades(0); setRealAnalytics(emptyAnalytics()); setRealLogs([]); clearReal();
+    }
+    if(clearTarget==="paper"||clearTarget==="both") {
+      setPaperTrades([]); setPaperOpenPos([]); setPaperDailyPnl(0); setPaperWeeklyPnl(0); setPaperTodayTrades(0); setPaperAnalytics(emptyAnalytics()); clearPaper();
+    }
+    setShowClear(false); addAlert("Data cleared","success");
+  },[clearTarget,doDisconnect,addAlert]);
+
+  // ── Derived ──
+  const capital    = config.capital + dailyPnl;
+  const drawPct    = Math.abs(Math.min(0,dailyPnl))/config.capital*100;
+  const profitPct  = Math.max(0,dailyPnl)/config.profitTarget*100;
+  const winRate    = (analytics.wins+analytics.losses)>0 ? Math.round(analytics.wins/(analytics.wins+analytics.losses)*100) : 0;
+  const unrealPnl  = openPos.reduce((s,p)=>s+p.unrealizedPnl,0);
+  const pcrData    = useMemo(()=>calcPCR(chain),[chain]);
+  const maxPain    = useMemo(()=>calcMaxPain(chain),[chain]);
+  const statusColor= sysStatus==="ACTIVE"?T.green:sysStatus==="TARGET_REACHED"||sysStatus==="MARKET_CLOSED"?T.yellow:T.red;
+
+  // Paper accuracy
+  const paperAccuracy = paperAnalytics.wins+paperAnalytics.losses > 0
+    ? Math.round(paperAnalytics.wins/(paperAnalytics.wins+paperAnalytics.losses)*100) : null;
+
+  // ── CSS ──
+  const CSS = `
+    @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500;600&display=swap');
+    *{box-sizing:border-box;margin:0;padding:0;scrollbar-width:thin;scrollbar-color:${T.cardBorder} transparent;}
+    html,body,#root{background:${T.bg};min-height:100vh;}
+    body{font-family:'JetBrains Mono',monospace;color:${T.text};font-size:12px;}
+    .S{font-family:'Syne',sans-serif;}
+    .card{background:${T.card};border:1px solid ${T.cardBorder};border-radius:14px;padding:18px;}
+    .csm{background:${T.card};border:1px solid ${T.cardBorder};border-radius:10px;padding:13px;}
+    .btn{padding:8px 14px;border-radius:9px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;cursor:pointer;border:none;transition:all .15s;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;}
+    .btn:hover{transform:translateY(-1px);filter:brightness(1.12);}
+    .btn:active{transform:none;filter:none;}
+    .btn:disabled{opacity:.45;cursor:not-allowed;transform:none;filter:none;}
+    .bp{background:${T.accent};color:${isDark?"#000":"#fff"};}
+    .bs{background:${T.greenBg};color:${T.green};border:1px solid ${T.greenBorder};}
+    .bd{background:${T.redBg};color:${T.red};border:1px solid ${T.redBorder};}
+    .bo{background:transparent;color:${T.textSub};border:1px solid ${T.cardBorder};}
+    .bo:hover{border-color:${T.accent};color:${T.accent};}
+    .bghost{background:transparent;color:${T.textMuted};border:none;}
+    .inp{background:${T.inputBg};border:1px solid ${T.inputBorder};color:${T.text};padding:9px 12px;border-radius:8px;outline:none;font-family:'JetBrains Mono',monospace;font-size:12px;width:100%;transition:border .15s;}
+    .inp:focus{border-color:${T.accent};box-shadow:0 0 0 3px ${T.accentDim};}
+    .inp::placeholder{color:${T.textMuted};}
+    select.inp option{background:${T.card};color:${T.text};}
+    .tb{padding:7px 13px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;border:none;transition:all .15s;white-space:nowrap;font-family:'JetBrains Mono',monospace;}
+    .ta{background:${T.accent};color:${isDark?"#000":"#fff"};}
+    .ti{background:transparent;color:${T.textMuted};}
+    .ti:hover{color:${T.accent};background:${T.accentDim};}
+    .ocard{background:${T.card};border:1px solid ${T.cardBorder};border-radius:12px;padding:14px;margin-bottom:10px;cursor:pointer;transition:all .15s;}
+    .ocard:hover,.ocard.sel{border-color:${T.accent};background:${T.cardHover};box-shadow:0 0 0 1px ${T.accent}22;}
+    .pulse{animation:pulse 2s infinite;}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+    .fade{animation:fi .22s ease;}
+    @keyframes fi{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+    .metric{background:${T.card};border:1px solid ${T.cardBorder};border-radius:14px;padding:16px;position:relative;overflow:hidden;}
+    .metric::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;border-radius:14px 14px 0 0;}
+    .mg::before{background:linear-gradient(90deg,${T.green},${T.green}66);}
+    .mr::before{background:linear-gradient(90deg,${T.red},${T.red}66);}
+    .mb::before{background:linear-gradient(90deg,${T.accent},${T.accent}66);}
+    .my::before{background:linear-gradient(90deg,${T.yellow},${T.yellow}66);}
+    .mp::before{background:linear-gradient(90deg,${T.purple},${T.purple}66);}
+    .logrow{padding:7px 14px;border-bottom:1px solid ${T.bg3};display:grid;grid-template-columns:70px 54px 1fr;gap:10px;align-items:start;}
+    table{width:100%;border-collapse:collapse;}
+    th{padding:10px 14px;text-align:left;font-size:10px;color:${T.textMuted};letter-spacing:1.2px;font-weight:600;white-space:nowrap;background:${T.card};border-bottom:1px solid ${T.cardBorder};}
+    td{padding:10px 14px;border-bottom:1px solid ${T.bg3};font-size:12px;}
+    tr:hover td{background:${T.cardHover};}
+    .paper-banner{background:${T.paperBanner};border-bottom:2px solid ${T.yellow};padding:6px 14px;display:flex;align-items:center;gap:10px;font-size:11px;color:${T.yellow};font-weight:600;}
+    .mode-btn{padding:5px 12px;border-radius:20px;font-size:10px;font-weight:700;cursor:pointer;border:none;transition:all .15s;letter-spacing:.5px;}
+    .mode-real{background:${!isPaper?T.green+"22":"transparent"};color:${!isPaper?T.green:T.textMuted};border:1px solid ${!isPaper?T.greenBorder:T.cardBorder};}
+    .mode-paper{background:${isPaper?T.yellow+"22":"transparent"};color:${isPaper?T.yellow:T.textMuted};border:1px solid ${isPaper?T.yellowBorder||T.cardBorder:T.cardBorder};}
+    .mode-btn:hover{filter:brightness(1.2);}
+    @media(max-width:900px){
+      .hm{display:none!important;}
+      .g2{grid-template-columns:1fr!important;}
+      .g3{grid-template-columns:1fr 1fr!important;}
+      .g5{grid-template-columns:1fr 1fr!important;}
+      .cpanel{width:100%!important;right:0!important;}
+      .main-nav{display:none!important;}
+      .mobile-nav{display:flex!important;}
+    }
+    @media(min-width:901px){.mobile-nav{display:none!important;}}
+    @media(max-width:600px){.g3{grid-template-columns:1fr!important;}}
+    .mobile-nav{position:fixed;bottom:0;left:0;right:0;background:${T.navBg};border-top:1px solid ${T.navBorder};display:flex;z-index:300;padding:6px 0 max(6px,env(safe-area-inset-bottom));}
+    .mnb{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;padding:4px;border:none;background:transparent;transition:all .15s;}
+    .mnb-icon{font-size:18px;line-height:1;}
+    .mnb-label{font-size:9px;font-family:'JetBrains Mono',monospace;font-weight:600;color:${T.textMuted};}
+    .mnb.active .mnb-icon{filter:drop-shadow(0 0 4px ${T.accent});}
+    .mnb.active .mnb-label{color:${T.accent};}
+    .token-reminder{background:${T.yellowBg};border:1px solid ${T.yellowBorder||T.yellow+"44"};border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+  `;
+
+  // ── Sub views ──
+  const NoAPI = () => (
+    <div style={{background:T.card,border:`1px solid ${T.cardBorder}`,borderRadius:14,padding:32,marginBottom:14,textAlign:"center"}}>
+      <div style={{fontSize:40,marginBottom:14}}>🔌</div>
+      <div className="S" style={{fontSize:20,fontWeight:800,marginBottom:8}}>Connect Your Broker</div>
+      <div style={{fontSize:12,color:T.textSub,lineHeight:1.9,marginBottom:16}}>
+        Real market data only — no simulation.<br/>
+        <span style={{color:mktStatus.open?T.green:T.yellow,fontWeight:600}}>{mktStatus.label}</span> · {mktStatus.next}
+      </div>
+      {isPaper && <div style={{background:T.yellowBg,border:`1px solid ${T.yellow}44`,borderRadius:8,padding:"8px 14px",fontSize:11,color:T.yellow,marginBottom:14}}>
+        📝 Paper mode uses real live data — broker connection still required for market prices.
+      </div>}
+      <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}>
+        <button className="btn bp" onClick={()=>{setCfgOpen(true);setCfgTab("broker");}}>⚙ Setup Broker API</button>
+        {(realConfig.creds.access_token||realConfig.creds.api_key||realConfig.creds.client_id) &&
+          <button className="btn bs" onClick={doConnect} disabled={connecting}>{connecting?"Connecting...":"🔌 Connect Now"}</button>}
+      </div>
+    </div>
+  );
+
+  const MktClosed = () => (
+    <div style={{background:T.card,border:`1px solid ${T.yellow}44`,borderRadius:14,padding:24,marginBottom:14,textAlign:"center"}}>
+      <div style={{fontSize:36,marginBottom:8}}>🔴</div>
+      <div className="S" style={{fontSize:18,fontWeight:700,color:T.yellow,marginBottom:6}}>{mktStatus.label}</div>
+      <div style={{fontSize:13,color:T.textSub,marginBottom:4}}>Next: <b style={{color:T.text}}>{mktStatus.next}</b></div>
+      <div style={{fontSize:11,color:T.textMuted,marginBottom:16}}>Mon–Fri · 9:15 AM – 3:30 PM IST</div>
+      {(quotes.nifty||quotes.bnf) && (
+        <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap"}}>
+          {[{l:"NIFTY LAST",v:quotes.nifty,ph:priceHistory.nifty},{l:"BANKNIFTY LAST",v:quotes.bnf,ph:priceHistory.bnf}].map(x=>(
+            <div key={x.l} style={{background:T.bg2,borderRadius:10,padding:"12px 18px",minWidth:140}}>
+              <div style={{fontSize:9,color:T.textMuted,marginBottom:3}}>{x.l}</div>
+              <div className="S" style={{fontSize:20,fontWeight:700}}>₹{fmt(x.v||0)}</div>
+              <MiniLineChart points={x.ph} color={T.accent} height={30} width={100}/>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  // ── LOGIN ──
+  if(!authed) return (
+    <div style={{fontFamily:"'JetBrains Mono',monospace",background:T.bg,minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <style>{CSS}</style>
+      <div style={{width:"100%",maxWidth:400,background:T.card,border:`1px solid ${T.cardBorder}`,borderRadius:20,padding:36,boxShadow:T.shadowLg}}>
+        <div style={{textAlign:"center",marginBottom:28}}>
+          <div style={{fontSize:10,letterSpacing:5,color:T.accent,marginBottom:10}}>QUANTEDGE AI v3.0</div>
+          <div className="S" style={{fontSize:30,fontWeight:800,marginBottom:4,lineHeight:1.1}}>Options<br/>Trading</div>
+          <div style={{fontSize:10,color:T.textMuted,letterSpacing:3,marginBottom:14}}>NIFTY · BANKNIFTY · REAL DATA</div>
+          <div style={{display:"flex",gap:5,justifyContent:"center",flexWrap:"wrap",marginBottom:14}}>
+            <Badge type="green">REAL API</Badge>
+            <Badge type="blue">NO SIMULATION</Badge>
+            <Badge type="yellow">PAPER MODE</Badge>
+            <Badge type="purple">AI ENGINE</Badge>
+          </div>
+          <div style={{background:T.accentDim,border:`1px solid ${T.accent}33`,borderRadius:10,padding:"10px 14px",fontSize:11,color:mktStatus.open?T.green:T.yellow,fontWeight:600}}>
+            {mktStatus.open?"🟢 Market is OPEN":"🔴 "+mktStatus.label+" · "+mktStatus.next}
+          </div>
+        </div>
+        {[{l:"USERNAME",k:"u",t:"text"},{l:"PASSWORD",k:"p",t:"password"}].map(f=>(
+          <div key={f.k} style={{marginBottom:14}}>
+            <div style={{fontSize:10,color:T.textMuted,letterSpacing:1.5,marginBottom:6}}>{f.l}</div>
+            <input className="inp" type={f.t} placeholder={`Enter ${f.l.toLowerCase()}`}
+              value={loginForm[f.k]} onChange={e=>setLoginForm(p=>({...p,[f.k]:e.target.value}))}
+              onKeyDown={e=>e.key==="Enter"&&loginForm.u&&loginForm.p&&setAuthed(true)}/>
+          </div>
+        ))}
+        <button className="btn bp" style={{width:"100%",justifyContent:"center",padding:"13px",fontSize:13,marginBottom:12,borderRadius:11}}
+          onClick={()=>loginForm.u&&loginForm.p?setAuthed(true):addAlert("Enter credentials","danger")}>
+          ENTER PLATFORM →
+        </button>
+        <div style={{display:"flex",gap:8}}>
+          <button className="btn bghost" style={{flex:1,justifyContent:"center",fontSize:11}} onClick={()=>setTheme(m=>m==="dark"?"light":"dark")}>{theme==="dark"?"☀ Light":"🌙 Dark"}</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── MAIN RENDER ──
+  return (
+    <div style={{fontFamily:"'JetBrains Mono',monospace",background:T.bg,minHeight:"100vh",color:T.text,fontSize:12,paddingBottom:isPaper||true?70:0}}>
+      <style>{CSS}</style>
+
+      {/* Alerts */}
+      <div style={{position:"fixed",top:12,right:12,zIndex:9999,display:"flex",flexDirection:"column",gap:7,maxWidth:310,width:"calc(100% - 24px)"}}>
+        {alerts.map(a=>(
+          <div key={a.id} className="fade" style={{padding:"10px 14px",borderRadius:10,fontSize:12,
+            background:a.type==="success"?T.greenBg:a.type==="danger"?T.redBg:a.type==="warning"?T.yellowBg:T.card,
+            border:`1px solid ${a.type==="success"?T.greenBorder:a.type==="danger"?T.redBorder:a.type==="warning"?T.yellowBorder||T.cardBorder:T.cardBorder}`,
+            color:a.type==="success"?T.green:a.type==="danger"?T.red:a.type==="warning"?T.yellow:T.text,
+            boxShadow:T.shadow}}>{a.msg}</div>
+        ))}
+      </div>
+
+      {/* Persistent signal bar */}
+      {persistentSignals.length>0 && sysStatus==="ACTIVE" && (
+        <div style={{background:T.purpleBg,borderBottom:`1px solid ${T.purpleBorder}`,padding:"7px 14px",display:"flex",alignItems:"center",gap:10,overflowX:"auto",flexWrap:"nowrap"}}>
+          <span style={{fontSize:10,color:T.purple,fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>🎯 LIVE SIGNALS</span>
+          {persistentSignals.map(s=>(
+            <div key={s.id} onClick={()=>{setSelOpp(s);setTab("signals");}} style={{display:"flex",alignItems:"center",gap:7,background:T.card,border:`1px solid ${T.purpleBorder}`,borderRadius:8,padding:"5px 10px",cursor:"pointer",flexShrink:0}}>
+              <span style={{fontWeight:600,fontSize:11}}>{s.type}</span>
+              <CircleScore score={s.score} size={32}/>
+              <button className="btn bs" style={{padding:"2px 8px",fontSize:10}} onClick={e=>{e.stopPropagation();executeTrade(s);setOpps(p=>p.map(x=>x.id===s.id?{...x,status:"EXECUTED"}:x));setPersistentSignals(p=>p.filter(x=>x.id!==s.id));}}>{isPaper?"📝":"✓"} EXEC</button>
+              <button className="btn bghost" style={{fontSize:12,padding:"2px"}} onClick={e=>{e.stopPropagation();setPersistentSignals(p=>p.filter(x=>x.id!==s.id));}}>✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Paper mode banner */}
+      {isPaper && (
+        <div className="paper-banner">
+          <span>📝 PAPER TRADING MODE</span>
+          <span style={{fontSize:10,color:T.yellow,opacity:.8}}>Virtual money · Real market data · Zero risk</span>
+          {paperAccuracy!==null && <Badge type="yellow">Accuracy: {paperAccuracy}%</Badge>}
+          <div style={{marginLeft:"auto"}}>
+            <button className="btn" style={{background:T.green+"22",color:T.green,border:`1px solid ${T.greenBorder}`,fontSize:10,padding:"3px 10px"}} onClick={()=>setMode("real")}>Switch to Real →</button>
+          </div>
+        </div>
+      )}
+
+      {/* Clear modal */}
+      {showClear && (
+        <div style={{position:"fixed",inset:0,background:"#00000090",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{background:T.card,border:`1px solid ${T.redBorder}`,borderRadius:16,padding:28,maxWidth:360,width:"100%",boxShadow:T.shadowLg}}>
+            <div style={{fontSize:32,marginBottom:10,textAlign:"center"}}>⚠️</div>
+            <div className="S" style={{fontWeight:700,fontSize:16,marginBottom:8,color:T.red,textAlign:"center"}}>Clear Data?</div>
+            <div style={{marginBottom:16}}>
+              <div style={{fontSize:10,color:T.textMuted,marginBottom:8,letterSpacing:1}}>SELECT WHAT TO CLEAR</div>
+              {[["both","Real + Paper data"],["real","Real trade data only"],["paper","Paper trade data only"]].map(([v,l])=>(
+                <div key={v} onClick={()=>setClearTarget(v)} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:8,cursor:"pointer",marginBottom:6,background:clearTarget===v?T.redBg:T.bg2,border:`1px solid ${clearTarget===v?T.redBorder:T.cardBorder}`}}>
+                  <div style={{width:14,height:14,borderRadius:"50%",border:`2px solid ${clearTarget===v?T.red:T.textMuted}`,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    {clearTarget===v && <div style={{width:7,height:7,borderRadius:"50%",background:T.red}}/>}
+                  </div>
+                  <span style={{fontSize:12,color:clearTarget===v?T.red:T.textSub}}>{l}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{fontSize:11,color:T.textMuted,marginBottom:18,lineHeight:1.6}}>This permanently deletes selected data. Cannot be undone.</div>
+            <div style={{display:"flex",gap:10}}>
+              <button className="btn bo" style={{flex:1,justifyContent:"center"}} onClick={()=>setShowClear(false)}>Cancel</button>
+              <button className="btn bd" style={{flex:1,justifyContent:"center"}} onClick={doClear}>Clear</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Config panel */}
+      {cfgOpen && (
+        <div className="cpanel" style={{position:"fixed",top:0,right:0,width:340,height:"100vh",background:T.card,borderLeft:`1px solid ${T.cardBorder}`,zIndex:500,overflowY:"auto",boxShadow:T.shadowLg}}>
+          <div style={{padding:"15px 18px",borderBottom:`1px solid ${T.cardBorder}`,display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,background:T.card,zIndex:1}}>
+            <div className="S" style={{fontWeight:700,color:T.accent,fontSize:15}}>⚙ Settings</div>
+            <button className="btn bghost" onClick={()=>setCfgOpen(false)} style={{fontSize:18,padding:"2px 6px"}}>✕</button>
+          </div>
+          <div style={{padding:"12px 18px 0",display:"flex",gap:5,borderBottom:`1px solid ${T.cardBorder}`,overflowX:"auto"}}>
+            {["broker","trading","paper","data"].map(t=>(
+              <button key={t} className={`tb ${cfgTab===t?"ta":"ti"}`} style={{fontSize:10,padding:"5px 10px",marginBottom:10}} onClick={()=>setCfgTab(t)}>{t.toUpperCase()}</button>
+            ))}
+          </div>
+          <div style={{padding:18}}>
+            {cfgTab==="broker" && (
+              <div style={{display:"flex",flexDirection:"column",gap:13}}>
+                <div style={{background:T.accentDim,border:`1px solid ${T.accent}33`,borderRadius:8,padding:11,fontSize:11,color:T.accent,lineHeight:1.7}}>
+                  ⚡ Token expires daily at market close. Generate fresh token each morning before 9:15 AM.
+                </div>
+                <div>
+                  <div style={{fontSize:10,color:T.textMuted,letterSpacing:1,marginBottom:5}}>BROKER</div>
+                  <select className="inp" value={realConfig.broker} onChange={e=>setRealConfig(p=>({...p,broker:e.target.value}))}>
+                    {Object.keys(BROKERS).map(b=><option key={b}>{b}</option>)}
+                  </select>
+                </div>
+                {BROKERS[realConfig.broker].fields.map(f=>(
+                  <div key={f}>
+                    <div style={{fontSize:10,color:T.textMuted,letterSpacing:1,marginBottom:5}}>{f.replace(/_/g," ").toUpperCase()}</div>
+                    <input className="inp" type="password" placeholder={`Enter ${f}`}
+                      value={realConfig.creds[f]||""} onChange={e=>setRealConfig(p=>({...p,creds:{...p.creds,[f]:e.target.value}}))}/>
+                  </div>
+                ))}
+                <a href={BROKERS[realConfig.broker].docsUrl} target="_blank" rel="noreferrer" style={{color:T.accent,fontSize:11,textDecoration:"none"}}>📖 Open API Docs →</a>
+                {apiStatus==="CONNECTED"
+                  ? <button className="btn bd" style={{justifyContent:"center"}} onClick={doDisconnect}>🔌 Disconnect {realConfig.broker}</button>
+                  : <button className="btn bp" style={{justifyContent:"center"}} onClick={doConnect} disabled={connecting}>{connecting?"⏳ Connecting...":`🔌 Connect ${realConfig.broker}`}</button>
+                }
+                <div style={{textAlign:"center",fontSize:11,color:apiStatus==="CONNECTED"?T.green:connecting?T.yellow:T.red}}>
+                  {apiStatus==="CONNECTED"?`✅ Connected to ${realConfig.broker}`:apiStatus}
+                </div>
+                {fetchErr && <div style={{background:T.redBg,borderRadius:8,padding:10,fontSize:11,color:T.red}}>⚠ {fetchErr}</div>}
+                <div style={{background:T.yellowBg,border:`1px solid ${T.yellow}33`,borderRadius:8,padding:10,fontSize:10,color:T.yellow,lineHeight:1.6}}>
+                  🔒 Credentials saved locally on your device only.
+                </div>
+              </div>
+            )}
+            {cfgTab==="trading" && (
+              <div style={{display:"flex",flexDirection:"column",gap:13}}>
+                <div style={{fontSize:10,color:T.accent,letterSpacing:1,fontWeight:700}}>REAL TRADING CONFIG</div>
+                {[{l:"Starting Capital (₹)",k:"capital"},{l:"Daily Profit Target (₹)",k:"profitTarget"},{l:"Max Daily Loss (₹)",k:"maxDailyLoss"},{l:"Risk Per Trade (%)",k:"riskPct",step:"0.1"},{l:"Capital Floor (%)",k:"minCapitalFloor"},{l:"Min AI Confidence (%)",k:"confidenceMin"},{l:"Max Trades / Day",k:"maxTradesDay"},{l:"Max Open Positions",k:"maxOpenPositions"}].map(f=>(
+                  <div key={f.k}>
+                    <div style={{fontSize:10,color:T.textMuted,letterSpacing:1,marginBottom:5}}>{f.l}</div>
+                    <input className="inp" type="number" step={f.step||1} value={realConfig[f.k]} onChange={e=>setRealConfig(p=>({...p,[f.k]:Number(e.target.value)}))}/>
+                  </div>
+                ))}
+                {[{l:"Stop at Profit Target",k:"stopAtProfitTarget",sub:"Halt when goal reached"},{l:"🛡 Capital Protection",k:"capitalProtection",sub:"Never breach floor"},{l:"Auto-Trade",k:"autoTrade",sub:"Execute signals automatically"},{l:"Trailing Stop",k:"trailingStop",sub:"Auto-adjust SL"}].map(f=>(
+                  <div key={f.k} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0"}}>
+                    <div><div style={{fontSize:11,color:T.text,marginBottom:1}}>{f.l}</div><div style={{fontSize:10,color:T.textMuted}}>{f.sub}</div></div>
+                    <Toggle on={realConfig[f.k]} onChange={()=>setRealConfig(p=>({...p,[f.k]:!p[f.k]}))}/>
+                  </div>
+                ))}
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0"}}>
+                  <div><div style={{fontSize:11,color:T.text,marginBottom:1}}>🔔 Sound Alerts</div><div style={{fontSize:10,color:T.textMuted}}>Ping on high confidence signal</div></div>
+                  <Toggle on={soundOn} onChange={()=>setSoundOn(p=>!p)}/>
+                </div>
+                <div>
+                  <div style={{fontSize:10,color:T.textMuted,letterSpacing:1,marginBottom:8}}>THEME</div>
+                  <div style={{display:"flex",gap:8}}>
+                    {["dark","light"].map(m=><button key={m} className={`btn ${theme===m?"bp":"bo"}`} style={{flex:1,justifyContent:"center"}} onClick={()=>setTheme(m)}>{m==="dark"?"🌙 Dark":"☀ Light"}</button>)}
+                  </div>
+                </div>
+                {realConfig.autoTrade && <div style={{background:T.redBg,border:`1px solid ${T.redBorder}`,borderRadius:8,padding:10,fontSize:10,color:T.red,lineHeight:1.5}}>⚠ Auto-trade places REAL orders when broker is connected.</div>}
+              </div>
+            )}
+            {cfgTab==="paper" && (
+              <div style={{display:"flex",flexDirection:"column",gap:13}}>
+                <div style={{background:T.yellowBg,border:`1px solid ${T.yellow}44`,borderRadius:8,padding:10,fontSize:11,color:T.yellow,lineHeight:1.7}}>
+                  📝 Paper config is completely separate from real. Change these freely — no real money impact.
+                </div>
+                <div style={{fontSize:10,color:T.yellow,letterSpacing:1,fontWeight:700}}>PAPER TRADING CONFIG</div>
+                {[{l:"Paper Capital (₹)",k:"capital"},{l:"Daily Profit Target (₹)",k:"profitTarget"},{l:"Max Daily Loss (₹)",k:"maxDailyLoss"},{l:"Risk Per Trade (%)",k:"riskPct",step:"0.1"},{l:"Min AI Confidence (%)",k:"confidenceMin"},{l:"Max Trades / Day",k:"maxTradesDay"},{l:"Max Open Positions",k:"maxOpenPositions"}].map(f=>(
+                  <div key={f.k}>
+                    <div style={{fontSize:10,color:T.textMuted,letterSpacing:1,marginBottom:5}}>{f.l}</div>
+                    <input className="inp" type="number" step={f.step||1} value={paperConfig[f.k]} onChange={e=>setPaperConfig(p=>({...p,[f.k]:Number(e.target.value)}))}/>
+                  </div>
+                ))}
+                {[{l:"Stop at Profit Target",k:"stopAtProfitTarget"},{l:"Capital Protection",k:"capitalProtection"},{l:"Auto-Trade",k:"autoTrade"}].map(f=>(
+                  <div key={f.k} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0"}}>
+                    <div style={{fontSize:11,color:T.text}}>{f.l}</div>
+                    <Toggle on={paperConfig[f.k]} onChange={()=>setPaperConfig(p=>({...p,[f.k]:!p[f.k]}))}/>
+                  </div>
+                ))}
+              </div>
+            )}
+            {cfgTab==="data" && (
+              <div style={{display:"flex",flexDirection:"column",gap:13}}>
+                <div className="S" style={{fontWeight:700,fontSize:13}}>Data Management</div>
+                <div style={{background:T.bg2,borderRadius:10,padding:13,fontSize:11,lineHeight:2.2,color:T.textSub}}>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4}}>
+                    <span>Real trades:</span><b style={{color:T.text}}>{realTrades.length}</b>
+                    <span>Paper trades:</span><b style={{color:T.yellow}}>{paperTrades.length}</b>
+                    <span>Real P&L:</span><b style={{color:realDailyPnl>=0?T.green:T.red}}>{fmtPnl(realDailyPnl)}</b>
+                    <span>Paper P&L:</span><b style={{color:paperDailyPnl>=0?T.green:T.yellow}}>{fmtPnl(paperDailyPnl)}</b>
+                    {paperAccuracy!==null&&<><span>Paper accuracy:</span><b style={{color:T.yellow}}>{paperAccuracy}%</b></>}
+                  </div>
+                </div>
+                <button className="btn bd" style={{justifyContent:"center"}} onClick={()=>{setClearTarget("both");setShowClear(true);}}>🗑 Clear Data...</button>
+                <button className="btn bo" style={{justifyContent:"center"}} onClick={()=>{
+                  const d={real:{trades:realTrades,analytics:realAnalytics},paper:{trades:paperTrades,analytics:paperAnalytics},exported:new Date().toISOString()};
+                  const blob=new Blob([JSON.stringify(d,null,2)],{type:"application/json"});
+                  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`quantedge-${dateStr().replace(/\//g,"-")}.json`;a.click();
+                }}>⬇ Export All Data</button>
+                {sysStatus!=="ACTIVE"
+                  ?<button className="btn bs" style={{justifyContent:"center"}} onClick={()=>{setSysStatus("ACTIVE");addAlert("Resumed","success");}}>▶ Resume Trading</button>
+                  :<button className="btn bd" style={{justifyContent:"center"}} onClick={()=>setSysStatus("HALTED")}>⏹ Halt Trading</button>
+                }
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* DESKTOP NAV */}
+      <div className="main-nav" style={{background:T.navBg,borderBottom:`1px solid ${T.navBorder}`,padding:"0 14px",display:"flex",alignItems:"center",gap:8,height:52,position:"sticky",top:0,zIndex:200,boxShadow:T.shadow}}>
+        <div className="S" style={{fontWeight:800,fontSize:15,color:T.accent,minWidth:"fit-content",letterSpacing:.5}}>QUANTEDGE <span style={{fontSize:9,color:T.textMuted,letterSpacing:3,fontFamily:"'JetBrains Mono',monospace",fontWeight:400}}>AI v3</span></div>
+        {/* Mode toggle */}
+        <div style={{display:"flex",gap:4,background:T.bg2,borderRadius:20,padding:"3px 4px",border:`1px solid ${T.cardBorder}`}}>
+          <button className="mode-btn mode-real" onClick={()=>setMode("real")}>● REAL</button>
+          <button className="mode-btn mode-paper" onClick={()=>setMode("paper")}>📝 PAPER</button>
+        </div>
+        {/* System status */}
+        <div style={{display:"flex",alignItems:"center",gap:5,padding:"4px 10px",borderRadius:20,background:sysStatus==="ACTIVE"?T.greenBg:T.yellowBg,border:`1px solid ${sysStatus==="ACTIVE"?T.greenBorder:T.yellow+"33"}`}}>
+          <div className={sysStatus==="ACTIVE"?"pulse":""} style={{width:5,height:5,borderRadius:"50%",background:statusColor}}/>
+          <span style={{fontSize:9,fontWeight:700,color:statusColor,whiteSpace:"nowrap"}}>{sysStatus==="MARKET_CLOSED"?"MKT CLOSED":sysStatus==="TARGET_REACHED"?"TARGET ✓":sysStatus}</span>
+        </div>
+        {/* API */}
+        <div style={{display:"flex",alignItems:"center",gap:4,padding:"4px 10px",borderRadius:20,background:apiStatus==="CONNECTED"?T.greenBg:T.redBg,border:`1px solid ${apiStatus==="CONNECTED"?T.greenBorder:T.redBorder}`}}>
+          <div style={{width:4,height:4,borderRadius:"50%",background:apiStatus==="CONNECTED"?T.green:T.red}}/>
+          <span style={{fontSize:9,fontWeight:700,color:apiStatus==="CONNECTED"?T.green:T.red,whiteSpace:"nowrap"}}>{apiStatus==="CONNECTED"?realConfig.broker.split(" ")[0]:"NO API"}</span>
+        </div>
+        {lastUpdated&&<div className="hm" style={{fontSize:9,color:T.textMuted}}>↻ {lastUpdated.toLocaleTimeString("en-IN")}</div>}
+        {/* Tabs */}
+        <div style={{display:"flex",gap:2,flex:1,overflowX:"auto"}}>
+          {[["dashboard","📊","Dashboard"],["signals","🎯","Signals"],["positions","📂","Positions"],["chart","📈","Chart"],["paper","📝","Paper"],["history","📋","History"],["analytics","🔬","Analytics"],["orders","📄","Orders"],["logs","📟","Logs"]].map(([k,i,l])=>(
+            <button key={k} className={`tb ${tab===k?"ta":"ti"}`} style={{fontSize:10,padding:"5px 9px"}} onClick={()=>setTab(k)}>{i} <span style={{fontSize:10}}>{l}</span></button>
+          ))}
+        </div>
+        {/* Actions */}
+        <div style={{display:"flex",gap:4,alignItems:"center",minWidth:"fit-content"}}>
+          {apiStatus==="CONNECTED"
+            ?<button className="btn bd" style={{fontSize:10,padding:"5px 10px"}} onClick={doDisconnect}>DISCONNECT</button>
+            :<button className="btn bs" style={{fontSize:10,padding:"5px 10px"}} onClick={doConnect} disabled={connecting}>{connecting?"...":"CONNECT"}</button>}
+          <button className="btn bghost" style={{fontSize:15,padding:"4px 6px"}} onClick={()=>setTheme(m=>m==="dark"?"light":"dark")}>{theme==="dark"?"☀":"🌙"}</button>
+          <button className="btn bo" style={{fontSize:10,padding:"5px 9px"}} onClick={()=>setCfgOpen(p=>!p)}>⚙</button>
+        </div>
+      </div>
+
+      {/* MOBILE BOTTOM NAV */}
+      <nav className="mobile-nav">
+        {[["dashboard","📊","Home"],["signals","🎯","Signals"],["paper","📝","Paper"],["chart","📈","Chart"],["analytics","🔬","Stats"]].map(([k,i,l])=>(
+          <button key={k} className={`mnb ${tab===k?"active":""}`} onClick={()=>setTab(k)}>
+            <span className="mnb-icon">{i}</span>
+            <span className="mnb-label" style={{color:tab===k?T.accent:T.textMuted}}>{l}</span>
+          </button>
+        ))}
+        <button className="mnb" onClick={()=>setCfgOpen(p=>!p)}>
+          <span className="mnb-icon">⚙</span>
+          <span className="mnb-label" style={{color:T.textMuted}}>Config</span>
+        </button>
+      </nav>
+
+      {/* PAGE CONTENT */}
+      <div style={{padding:14,paddingRight:cfgOpen?354:14,transition:"padding-right .3s"}}>
+
+        {/* ══ DASHBOARD ══ */}
+        {tab==="dashboard" && (
+          <div className="fade">
+            {/* Token reminder */}
+            {tokenReminder && (
+              <div className="token-reminder">
+                <span style={{fontSize:18}}>⏰</span>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:700,marginBottom:2}}>Market opens soon — refresh your API token!</div>
+                  <div style={{fontSize:10,color:T.yellow,opacity:.8}}>Go to your broker app, generate today's access token, paste it in Config → Broker</div>
+                </div>
+                <a href={BROKERS[realConfig.broker]?.docsUrl} target="_blank" rel="noreferrer" className="btn" style={{background:T.yellowBg,color:T.yellow,border:`1px solid ${T.yellow}44`,fontSize:10,padding:"4px 10px",textDecoration:"none"}}>Open Broker →</a>
+                <button className="btn bghost" onClick={()=>setTokenReminder(false)}>✕</button>
+              </div>
+            )}
+            {apiStatus!=="CONNECTED" && <NoAPI/>}
+            {apiStatus==="CONNECTED" && !mktStatus.open && <MktClosed/>}
+            {apiStatus==="CONNECTED" && (quotes.nifty||quotes.bnf) && (
+              <>
+                {/* Market tickers with sparklines */}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:12}} className="g3">
+                  {[{l:"NIFTY 50",v:quotes.nifty,ohlc:quotes.nOHLC,ph:priceHistory.nifty},{l:"BANKNIFTY",v:quotes.bnf,ohlc:quotes.bOHLC,ph:priceHistory.bnf}].map(m=>(
+                    <div key={m.l} className="csm">
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
+                        <div>
+                          <div style={{fontSize:9,color:T.textMuted,letterSpacing:2,marginBottom:2}}>{m.l}</div>
+                          <div className="S" style={{fontSize:22,fontWeight:800,lineHeight:1}}>{m.v?fmt(m.v):"—"}</div>
+                          {m.ohlc && m.ohlc.open && (
+                            <div style={{fontSize:10,fontWeight:600,color:m.v>m.ohlc.open?T.green:T.red,marginTop:2}}>
+                              {m.v>m.ohlc.open?"+":""}{fmt(m.v-m.ohlc.open)} ({fmtPct(((m.v-m.ohlc.open)/m.ohlc.open)*100)})
+                            </div>
+                          )}
+                        </div>
+                        <MiniLineChart points={m.ph} color={m.v&&m.ohlc?.open?(m.v>m.ohlc.open?T.green:T.red):T.accent} height={36} width={80}/>
+                      </div>
+                      {m.ohlc && <div style={{fontSize:9,color:T.textMuted}}>O:{fmt(m.ohlc.open||0)} H:{fmt(m.ohlc.high||0)} L:{fmt(m.ohlc.low||0)}</div>}
+                    </div>
+                  ))}
+                  <div className="csm">
+                    <div style={{fontSize:9,color:T.textMuted,letterSpacing:2,marginBottom:4}}>MARKET</div>
+                    <div className="S" style={{fontSize:14,fontWeight:700,color:mktStatus.open?T.green:T.yellow,marginBottom:3}}>{mktStatus.label}</div>
+                    <div style={{fontSize:9,color:T.textMuted,marginBottom:8}}>{mktStatus.next}</div>
+                    {pcrData && <div style={{fontSize:10,marginBottom:3}}>PCR: <b style={{color:pcrData.pcr>1.2?T.green:pcrData.pcr<0.8?T.red:T.yellow}}>{pcrData.pcr.toFixed(2)}</b></div>}
+                    {maxPain && <div style={{fontSize:10}}>Max Pain: <b style={{color:T.purple}}>₹{fmt(maxPain,0)}</b></div>}
+                  </div>
+                </div>
+
+                {/* Dominant P&L card */}
+                <div style={{background:dailyPnl>=0?T.greenBg:T.redBg,border:`2px solid ${dailyPnl>=0?T.greenBorder:T.redBorder}`,borderRadius:14,padding:"18px 22px",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
+                  <div>
+                    <div style={{fontSize:10,color:T.textMuted,letterSpacing:2,marginBottom:4}}>{isPaper?"📝 PAPER":"💰 REAL"} TODAY P&L</div>
+                    <div className="S" style={{fontSize:36,fontWeight:800,color:dailyPnl>=0?T.green:T.red,lineHeight:1}}>{fmtPnl(dailyPnl)}</div>
+                    <div style={{fontSize:11,color:T.textMuted,marginTop:4}}>Capital: ₹{fmt(capital)} · Weekly: {fmtPnl(weeklyPnl)}</div>
+                  </div>
+                  <div style={{display:"flex",gap:14,flexWrap:"wrap"}}>
+                    <div style={{textAlign:"center"}}>
+                      <div style={{fontSize:9,color:T.textMuted,marginBottom:2}}>WIN RATE</div>
+                      <div className="S" style={{fontSize:20,fontWeight:700,color:winRate>=55?T.green:T.yellow}}>{winRate}%</div>
+                    </div>
+                    <div style={{textAlign:"center"}}>
+                      <div style={{fontSize:9,color:T.textMuted,marginBottom:2}}>TRADES</div>
+                      <div className="S" style={{fontSize:20,fontWeight:700}}>{todayTrades}/{config.maxTradesDay}</div>
+                    </div>
+                    <div style={{textAlign:"center"}}>
+                      <div style={{fontSize:9,color:T.textMuted,marginBottom:2}}>OPEN</div>
+                      <div className="S" style={{fontSize:20,fontWeight:700,color:openPos.length>0?T.accent:T.textMuted}}>{openPos.length}</div>
+                    </div>
+                    <div style={{textAlign:"center"}}>
+                      <div style={{fontSize:9,color:T.textMuted,marginBottom:2}}>UNREALIZED</div>
+                      <div className="S" style={{fontSize:16,fontWeight:700,color:unrealPnl>=0?T.green:T.red}}>{fmtPnl(unrealPnl)}</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Progress bars */}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}} className="g2">
+                  {config.stopAtProfitTarget && (
+                    <div style={{background:T.card,border:`1px solid ${T.cardBorder}`,borderRadius:10,padding:"10px 14px"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:6,fontSize:11}}>
+                        <span style={{color:T.textSub}}>🎯 Profit Target</span>
+                        <span style={{color:dailyPnl>=config.profitTarget?T.green:T.text,fontWeight:600}}>{fmtPnl(dailyPnl)} / ₹{fmt(config.profitTarget)}</span>
+                      </div>
+                      <Pbar pct={profitPct} color={`linear-gradient(90deg,${T.accent},${T.green})`}/>
+                    </div>
+                  )}
+                  {config.capitalProtection && (
+                    <div style={{background:T.card,border:`1px solid ${T.cardBorder}`,borderRadius:10,padding:"10px 14px"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:6,fontSize:11}}>
+                        <span style={{color:T.textSub}}>🛡 Capital Floor</span>
+                        <span style={{color:drawPct>2?T.red:T.green,fontWeight:600}}>₹{fmt(capital)} / ₹{fmt(config.capital*config.minCapitalFloor/100)}</span>
+                      </div>
+                      <Pbar pct={drawPct/(100-config.minCapitalFloor)*100} color={drawPct>2?`linear-gradient(90deg,${T.yellow},${T.red})`:T.green}/>
+                    </div>
+                  )}
+                </div>
+
+                {/* Signals + Positions */}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}} className="g2">
+                  <div className="card">
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                      <div className="S" style={{fontWeight:700,color:T.purple,fontSize:13}}><span className={sysStatus==="ACTIVE"?"pulse":""}>●</span> AI SIGNALS</div>
+                      <button className="btn bo" style={{fontSize:10,padding:"4px 9px"}} onClick={()=>setTab("signals")}>VIEW ALL</button>
+                    </div>
+                    {mktStatus.open ? (
+                      <>
+                        {opps.filter(o=>o.status==="PENDING").slice(0,3).map(o=>(
+                          <div key={o.id} className="ocard" onClick={()=>{setSelOpp(o);setTab("signals");}}>
+                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                              <div>
+                                <div style={{fontWeight:700,fontSize:13,marginBottom:3}}>{o.type}</div>
+                                <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                                  <Badge type={o.direction==="CE"?"green":"red"}>{o.direction}</Badge>
+                                  <Badge type="purple">{o.strategy}</Badge>
+                                </div>
+                              </div>
+                              <CircleScore score={o.score}/>
+                            </div>
+                            <div style={{display:"flex",gap:10,fontSize:10,color:T.textMuted}}>
+                              <span>₹{o.premium}</span><span style={{color:T.red}}>SL ₹{o.sl}</span><span style={{color:T.green}}>T ₹{o.target}</span><span style={{color:T.purple}}>RR {o.rr}x</span>
+                            </div>
+                          </div>
+                        ))}
+                        {opps.filter(o=>o.status==="PENDING").length===0 && <div style={{textAlign:"center",padding:"24px 0",color:T.textMuted,fontSize:11}}>{sysStatus==="TARGET_REACHED"?"🏆 Target reached!":"◎ Scanning live market..."}</div>}
+                      </>
+                    ) : <div style={{textAlign:"center",padding:"24px 0",color:T.textMuted,fontSize:11}}>🔴 {mktStatus.label}<br/><span style={{fontSize:10}}>{mktStatus.next}</span></div>}
+                  </div>
+                  <div className="card">
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                      <div className="S" style={{fontWeight:700,color:T.accent,fontSize:13}}>POSITIONS ({openPos.length})</div>
+                      <span style={{fontSize:11,color:unrealPnl>=0?T.green:T.red,fontWeight:700}}>{fmtPnl(unrealPnl)}</span>
+                    </div>
+                    {openPos.slice(0,5).map(p=>(
+                      <div key={p.id} style={{padding:"9px 0",borderBottom:`1px solid ${T.bg3}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <div>
+                          <div style={{fontWeight:600,fontSize:12,marginBottom:2}}>{p.type}</div>
+                          <div style={{fontSize:10,color:T.textMuted}}>₹{p.entryPrice} · Qty {p.qty}</div>
+                        </div>
+                        <div style={{textAlign:"right"}}>
+                          <div style={{fontWeight:700,color:p.unrealizedPnl>=0?T.green:T.red,fontSize:13}}>{fmtPnl(p.unrealizedPnl)}</div>
+                          <button className="btn bd" style={{fontSize:9,padding:"2px 7px",marginTop:3}} onClick={()=>closeTrade(p,p.currentPrem,"MANUAL CLOSE")}>CLOSE</button>
+                        </div>
+                      </div>
+                    ))}
+                    {openPos.length===0 && <div style={{textAlign:"center",padding:"24px 0",color:T.textMuted,fontSize:11}}>No open positions</div>}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ══ SIGNALS ══ */}
+        {tab==="signals" && (
+          <div className="fade">
+            {apiStatus!=="CONNECTED"?<NoAPI/>:!mktStatus.open?<MktClosed/>:(
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}} className="g2">
+                <div>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                    <div className="S" style={{fontWeight:700,color:T.purple,fontSize:14}}>AI SIGNALS</div>
+                    <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                      {isPaper&&<Badge type="yellow">PAPER</Badge>}
+                      <Badge type="blue">{opps.filter(o=>o.status==="PENDING").length} pending</Badge>
+                    </div>
+                  </div>
+                  <div style={{maxHeight:"74vh",overflowY:"auto",paddingRight:4}}>
+                    {opps.map(o=>(
+                      <div key={o.id} className={`ocard ${selOpp?.id===o.id?"sel":""}`} style={{opacity:o.status==="EXECUTED"?0.45:1}} onClick={()=>setSelOpp(o)}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+                          <div style={{flex:1}}>
+                            <div className="S" style={{fontWeight:700,fontSize:15,marginBottom:4}}>{o.type}</div>
+                            <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:6}}>
+                              <Badge type={o.direction==="CE"?"green":"red"}>{o.direction}</Badge>
+                              <Badge type="purple">{o.strategy}</Badge>
+                              <Badge type="blue">R:R {o.rr}x</Badge>
+                              {o.greeks && <Badge type="orange">IV {o.greeks.iv}%</Badge>}
+                              {o.status==="EXECUTED"&&<Badge type="yellow">DONE</Badge>}
+                            </div>
+                            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:5}}>
+                              {[["ENTRY",`₹${o.premium}`,T.text],["SL",`₹${o.sl}`,T.red],["TARGET",`₹${o.target}`,T.green],["QTY",o.qty,T.accent]].map(([l,v,c])=>(
+                                <div key={l} style={{background:T.bg2,borderRadius:6,padding:"5px 7px"}}>
+                                  <div style={{fontSize:9,color:T.textMuted,marginBottom:1}}>{l}</div>
+                                  <div style={{fontWeight:700,color:c,fontSize:12}}>{v}</div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                          <CircleScore score={o.score} size={56}/>
+                        </div>
+                        {o.status==="PENDING"&&(
+                          <div style={{display:"flex",gap:7,marginTop:8}}>
+                            <button className="btn bs" style={{flex:1,justifyContent:"center",fontSize:11}} onClick={e=>{e.stopPropagation();executeTrade(o);setOpps(p=>p.map(x=>x.id===o.id?{...x,status:"EXECUTED"}:x));setPersistentSignals(p=>p.filter(x=>x.id!==o.id));}}>
+                              {isPaper?"📝 PAPER TRADE":"✓ EXECUTE REAL"}
+                            </button>
+                            <button className="btn bd" onClick={e=>{e.stopPropagation();setOpps(p=>p.filter(x=>x.id!==o.id));setPersistentSignals(p=>p.filter(x=>x.id!==o.id));}}>✕</button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {opps.length===0&&<div style={{textAlign:"center",padding:50,color:T.textMuted}}><div style={{fontSize:36,marginBottom:10}}>◎</div>Analyzing live market data...</div>}
+                  </div>
+                </div>
+                <div>
+                  <div className="S" style={{fontWeight:700,color:T.accent,marginBottom:12,fontSize:14}}>AI REPORT</div>
+                  {selOpp?(
+                    <div className="card fade">
+                      <div style={{borderBottom:`1px solid ${T.cardBorder}`,paddingBottom:14,marginBottom:14}}>
+                        <div className="S" style={{fontSize:24,fontWeight:800,marginBottom:6}}>{selOpp.type}</div>
+                        <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:10}}>
+                          <Badge type={selOpp.direction==="CE"?"green":"red"}>{selOpp.direction==="CE"?"BULLISH CALL":"BEARISH PUT"}</Badge>
+                          <Badge type="purple">{selOpp.strategy}</Badge>
+                          <Badge type="blue">R:R {selOpp.rr}x</Badge>
+                        </div>
+                        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+                          <CircleScore score={selOpp.score} size={64}/>
+                          <div>
+                            <div style={{fontSize:10,color:T.textMuted,marginBottom:2}}>AI CONFIDENCE</div>
+                            <div className="S" style={{fontSize:28,fontWeight:800,color:selOpp.score>=75?T.green:T.yellow}}>{selOpp.score}%</div>
+                          </div>
+                        </div>
+                        {/* Greeks */}
+                        {selOpp.greeks&&(
+                          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginBottom:8}}>
+                            {[["IV",`${selOpp.greeks.iv}%`,T.orange],["Delta",selOpp.greeks.delta,T.accent],["Theta",selOpp.greeks.theta,T.red]].map(([l,v,c])=>(
+                              <div key={l} style={{background:T.bg2,borderRadius:7,padding:"7px 10px",textAlign:"center"}}>
+                                <div style={{fontSize:9,color:T.textMuted,marginBottom:2}}>{l}</div>
+                                <div style={{fontWeight:700,color:c,fontSize:13}}>{v}</div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {selOpp.pcrData&&<div style={{fontSize:10,color:T.textMuted,marginBottom:4}}>PCR: <b style={{color:T.green}}>{selOpp.pcrData.pcr}</b></div>}
+                        {selOpp.maxPain&&<div style={{fontSize:10,color:T.textMuted}}>Max Pain: <b style={{color:T.purple}}>₹{fmt(selOpp.maxPain,0)}</b></div>}
+                      </div>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
+                        {[["Entry",`₹${selOpp.premium}`,T.text],["Stop Loss",`₹${selOpp.sl}`,T.red],["Target",`₹${selOpp.target}`,T.green],["Qty",selOpp.qty,T.accent],["Max Risk",`₹${fmt((selOpp.premium-selOpp.sl)*selOpp.qty)}`,T.red],["Max Profit",`₹${fmt((selOpp.target-selOpp.premium)*selOpp.qty)}`,T.green]].map(([l,v,c])=>(
+                          <div key={l} style={{background:T.bg2,borderRadius:9,padding:"10px 12px"}}>
+                            <div style={{fontSize:9,color:T.textMuted,marginBottom:2}}>{l}</div>
+                            <div style={{fontWeight:700,color:c,fontSize:15}}>{v}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{fontSize:10,color:T.textMuted,letterSpacing:1,marginBottom:8}}>ANALYSIS BREAKDOWN</div>
+                      {selOpp.reasons.map((r,i)=>(
+                        <div key={i} style={{display:"flex",gap:8,marginBottom:6,padding:"8px 10px",background:T.bg2,borderRadius:8,borderLeft:`3px solid ${r.includes("⚠")?T.yellow:T.accent}`}}>
+                          <span style={{color:r.includes("⚠")?T.yellow:T.accent,flexShrink:0}}>→</span>
+                          <span style={{fontSize:11,color:T.textSub,lineHeight:1.6}}>{r}</span>
+                        </div>
+                      ))}
+                      {selOpp.status==="PENDING"&&(
+                        <div style={{display:"flex",gap:8,marginTop:14}}>
+                          <button className="btn bp" style={{flex:1,justifyContent:"center",padding:"11px",fontSize:13}} onClick={()=>{executeTrade(selOpp);setOpps(p=>p.map(x=>x.id===selOpp.id?{...x,status:"EXECUTED"}:x));setSelOpp(p=>({...p,status:"EXECUTED"}));}}>
+                            {isPaper?"📝 EXECUTE PAPER TRADE":"▶ EXECUTE REAL TRADE"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ):<div className="card" style={{textAlign:"center",padding:"60px 20px",color:T.textMuted}}><div style={{fontSize:36,marginBottom:10}}>◈</div>Select a signal to see full analysis</div>}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ══ POSITIONS ══ */}
+        {tab==="positions" && (
+          <div className="fade">
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
+              <div className="S" style={{fontWeight:700,color:T.accent,fontSize:14}}>OPEN POSITIONS ({openPos.length}) {isPaper&&<Badge type="yellow">PAPER</Badge>}</div>
+              <span style={{fontWeight:700,color:unrealPnl>=0?T.green:T.red,fontSize:13}}>{fmtPnl(unrealPnl)}</span>
+            </div>
+            {openPos.length>0?(
+              <div style={{overflowX:"auto"}}>
+                <table>
+                  <thead><tr>{["INSTRUMENT","ENTRY TIME","ENTRY","CURRENT","SL","TARGET","QTY","P&L","STRATEGY","ACTION"].map(h=><th key={h}>{h}</th>)}</tr></thead>
+                  <tbody>{openPos.map(p=>(
+                    <tr key={p.id}>
+                      <td style={{fontWeight:700}}>{p.type}</td>
+                      <td style={{color:T.textMuted,fontSize:10}}>{new Date(p.entryTime).toLocaleTimeString("en-IN")}</td>
+                      <td>₹{p.entryPrice}</td>
+                      <td style={{color:p.currentPrem>p.entryPrice?T.green:T.red,fontWeight:600}}>₹{p.currentPrem}</td>
+                      <td style={{color:T.red}}>₹{p.sl}</td>
+                      <td style={{color:T.green}}>₹{p.target}</td>
+                      <td>{p.qty}</td>
+                      <td style={{fontWeight:700,color:p.unrealizedPnl>=0?T.green:T.red}}>{fmtPnl(p.unrealizedPnl)}</td>
+                      <td style={{color:T.purple,fontSize:10}}>{p.strategy}</td>
+                      <td><button className="btn bd" style={{fontSize:10,padding:"3px 10px"}} onClick={()=>closeTrade(p,p.currentPrem,"MANUAL CLOSE")}>CLOSE</button></td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            ):<div className="card" style={{textAlign:"center",padding:60,color:T.textMuted}}><div style={{fontSize:36,marginBottom:10}}>◎</div>No open positions</div>}
+          </div>
+        )}
+
+        {/* ══ CHART ══ */}
+        {tab==="chart" && (
+          <div className="fade">
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}} className="g2">
+              {[{l:"NIFTY 50 — Intraday",cnd:candles.nifty,v:quotes.nifty},{l:"BANKNIFTY — Intraday",cnd:candles.bnf,v:quotes.bnf}].map(m=>(
+                <div key={m.l} className="card" style={{padding:0,overflow:"hidden"}}>
+                  <div style={{padding:"12px 16px",borderBottom:`1px solid ${T.cardBorder}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div className="S" style={{fontWeight:700,fontSize:13}}>{m.l}</div>
+                    {m.v&&<div style={{fontSize:13,fontWeight:600}}>₹{fmt(m.v)}</div>}
+                  </div>
+                  <div style={{padding:14}}>
+                    <CandleChart candles={m.cnd} height={200}/>
+                    <div style={{marginTop:12}}>
+                      <div style={{fontSize:10,color:T.textMuted,marginBottom:4}}>INTRADAY PRICE PATH</div>
+                      <MiniLineChart points={m.l.includes("NIFTY 50")?priceHistory.nifty:priceHistory.bnf} color={T.accent} height={50} width={480}/>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {/* Entry/exit markers legend */}
+            <div className="card" style={{marginTop:14}}>
+              <div className="S" style={{fontWeight:700,color:T.accent,marginBottom:12}}>TODAY'S TRADE TIMELINE</div>
+              {trades.filter(t=>new Date(t.entryTime).toDateString()===new Date().toDateString()).length>0?(
+                <div style={{position:"relative",paddingLeft:20}}>
+                  <div style={{position:"absolute",left:8,top:0,bottom:0,width:2,background:T.cardBorder,borderRadius:1}}/>
+                  {trades.filter(t=>new Date(t.entryTime).toDateString()===new Date().toDateString()).map((t,i)=>(
+                    <div key={i} style={{display:"flex",alignItems:"flex-start",gap:12,marginBottom:14,position:"relative"}}>
+                      <div style={{width:14,height:14,borderRadius:"50%",background:t.pnl>=0?T.green:T.red,border:`2px solid ${T.card}`,position:"absolute",left:-14,top:2,flexShrink:0}}/>
+                      <div style={{background:T.bg2,borderRadius:8,padding:"8px 12px",flex:1}}>
+                        <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
+                          <span style={{fontWeight:600}}>{t.type}</span>
+                          <span style={{fontWeight:700,color:t.pnl>=0?T.green:T.red}}>{fmtPnl(t.pnl)}</span>
+                        </div>
+                        <div style={{fontSize:10,color:T.textMuted}}>Entry: ₹{t.entryPrice} → Exit: ₹{t.exitPrice} · {t.closeReason}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ):<div style={{textAlign:"center",padding:"30px 0",color:T.textMuted,fontSize:11}}>No trades today</div>}
+            </div>
+          </div>
+        )}
+
+        {/* ══ PAPER ══ */}
+        {tab==="paper" && (
+          <div className="fade">
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:14}} className="g3">
+              {[
+                {l:"PAPER CAPITAL",v:`₹${fmt(paperConfig.capital+paperDailyPnl)}`,sub:`Base ₹${fmt(paperConfig.capital)}`,c:T.yellow,cls:"my"},
+                {l:"PAPER P&L TODAY",v:fmtPnl(paperDailyPnl),sub:`Weekly ${fmtPnl(paperWeeklyPnl)}`,c:paperDailyPnl>=0?T.green:T.red,cls:paperDailyPnl>=0?"mg":"mr"},
+                {l:"PAPER WIN RATE",v:`${paperAnalytics.wins+paperAnalytics.losses>0?Math.round(paperAnalytics.wins/(paperAnalytics.wins+paperAnalytics.losses)*100):0}%`,sub:`${paperAnalytics.wins}W ${paperAnalytics.losses}L`,c:T.purple,cls:"mp"},
+              ].map(m=>(
+                <div key={m.l} className={`metric ${m.cls}`}>
+                  <div style={{fontSize:9,color:T.textMuted,letterSpacing:1.5,marginBottom:5}}>{m.l}</div>
+                  <div className="S" style={{fontSize:22,fontWeight:800,color:m.c,marginBottom:2}}>{m.v}</div>
+                  <div style={{fontSize:10,color:T.textMuted}}>{m.sub}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Paper vs Real comparison */}
+            {(realTrades.length>0 || paperTrades.length>0) && (
+              <div className="card" style={{marginBottom:14}}>
+                <div className="S" style={{fontWeight:700,color:T.accent,marginBottom:14,fontSize:14}}>📊 Paper vs Real Comparison</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}} className="g2">
+                  {[{l:"PAPER",trades:paperTrades,ana:paperAnalytics,color:T.yellow},{l:"REAL",trades:realTrades,ana:realAnalytics,color:T.green}].map(s=>(
+                    <div key={s.l} style={{background:T.bg2,borderRadius:10,padding:14}}>
+                      <div style={{fontSize:10,color:s.color,letterSpacing:2,fontWeight:700,marginBottom:10}}>● {s.l} TRADING</div>
+                      {[["Total P&L",fmtPnl(s.ana.totalPnl),s.ana.totalPnl>=0?T.green:T.red],["Win Rate",`${s.trades.length>0?Math.round(s.ana.wins/Math.max(1,s.ana.wins+s.ana.losses)*100):0}%`,T.accent],["Total Trades",`${s.ana.wins+s.ana.losses}`,T.text],["Avg Win",`₹${fmt(s.ana.avgWin)}`,T.green],["Avg Loss",`₹${fmt(s.ana.avgLoss)}`,T.red]].map(([l,v,c])=>(
+                        <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:`1px solid ${T.bg3}`}}>
+                          <span style={{color:T.textMuted,fontSize:11}}>{l}</span>
+                          <span style={{fontWeight:700,color:c,fontSize:11}}>{v}</span>
+                        </div>
+                      ))}
+                      <div style={{marginTop:10}}>
+                        <div style={{fontSize:9,color:T.textMuted,marginBottom:4}}>EQUITY CURVE</div>
+                        <EquityCurve trades={s.trades} color={s.color} height={60}/>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {paperAccuracy!==null && (
+                  <div style={{marginTop:14,padding:14,background:paperAccuracy>=60?T.greenBg:T.yellowBg,borderRadius:10,border:`1px solid ${paperAccuracy>=60?T.greenBorder:T.yellow+"44"}`}}>
+                    <div style={{fontWeight:600,color:paperAccuracy>=60?T.green:T.yellow,marginBottom:4}}>
+                      {paperAccuracy>=60?"✅ AI accuracy looks promising — consider going live!":"📝 Keep paper trading — build more data before going live"}
+                    </div>
+                    <div style={{fontSize:11,color:T.textSub}}>
+                      Paper accuracy: <b>{paperAccuracy}%</b> over {paperAnalytics.wins+paperAnalytics.losses} trades.
+                      {paperAccuracy>=60?" Minimum 60% win rate suggested before using real money.":" Aim for consistent 60%+ before switching to real."}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Paper trade history */}
+            <div className="card">
+              <div className="S" style={{fontWeight:700,color:T.yellow,marginBottom:12,fontSize:14}}>📝 Paper Trade Log ({paperTrades.length})</div>
+              {paperTrades.length>0?(
+                <div style={{overflowX:"auto"}}>
+                  <table>
+                    <thead><tr>{["DATE","TIME","INSTRUMENT","DIR","ENTRY","EXIT","QTY","PAPER P&L","STRATEGY","RESULT"].map(h=><th key={h}>{h}</th>)}</tr></thead>
+                    <tbody>{paperTrades.map((t,i)=>(
+                      <tr key={i}>
+                        <td style={{color:T.textMuted,fontSize:10}}>{new Date(t.entryTime).toLocaleDateString("en-IN")}</td>
+                        <td style={{color:T.textMuted}}>{new Date(t.entryTime).toLocaleTimeString("en-IN")}</td>
+                        <td style={{fontWeight:600}}>{t.type}</td>
+                        <td><Badge type={t.direction==="CE"?"green":"red"}>{t.direction}</Badge></td>
+                        <td>₹{t.entryPrice}</td><td>₹{t.exitPrice}</td><td>{t.qty}</td>
+                        <td style={{fontWeight:700,color:t.pnl>=0?T.green:T.red}}>{fmtPnl(t.pnl)}</td>
+                        <td style={{color:T.purple,fontSize:10}}>{t.strategy}</td>
+                        <td><Badge type={t.pnl>=0?"green":"red"}>{t.pnl>=0?"WIN":"LOSS"}</Badge></td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              ):<div style={{textAlign:"center",padding:40,color:T.textMuted,fontSize:11}}><div style={{fontSize:30,marginBottom:8}}>📝</div>Start paper trading to see your results here</div>}
+            </div>
+          </div>
+        )}
+
+        {/* ══ HISTORY ══ */}
+        {tab==="history" && (
+          <div className="fade">
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
+              <div className="S" style={{fontWeight:700,color:T.accent,fontSize:14}}>TRADE HISTORY ({trades.length}) {isPaper&&<Badge type="yellow">PAPER</Badge>}</div>
+              <div style={{display:"flex",gap:10,fontSize:11}}>
+                <span style={{color:T.green}}>{analytics.wins}W</span><span style={{color:T.red}}>{analytics.losses}L</span>
+                <span style={{color:T.yellow}}>{winRate}% WR</span>
+                <span style={{color:analytics.totalPnl>=0?T.green:T.red,fontWeight:700}}>{fmtPnl(analytics.totalPnl)}</span>
+              </div>
+            </div>
+            <div style={{overflowX:"auto"}}>
+              <table>
+                <thead><tr>{["DATE","TIME","INSTRUMENT","DIR","ENTRY","EXIT","QTY","P&L","STRATEGY","REASON","RESULT"].map(h=><th key={h}>{h}</th>)}</tr></thead>
+                <tbody>{trades.map((t,i)=>(
+                  <tr key={i}>
+                    <td style={{color:T.textMuted,fontSize:10}}>{new Date(t.entryTime).toLocaleDateString("en-IN")}</td>
+                    <td style={{color:T.textMuted}}>{new Date(t.entryTime).toLocaleTimeString("en-IN")}</td>
+                    <td style={{fontWeight:700}}>{t.type}</td>
+                    <td><Badge type={t.direction==="CE"?"green":"red"}>{t.direction}</Badge></td>
+                    <td>₹{t.entryPrice}</td><td>₹{t.exitPrice}</td><td>{t.qty}</td>
+                    <td style={{fontWeight:700,color:t.pnl>=0?T.green:T.red}}>{fmtPnl(t.pnl)}</td>
+                    <td style={{color:T.purple,fontSize:10}}>{t.strategy}</td>
+                    <td style={{color:T.textMuted,fontSize:10}}>{t.closeReason}</td>
+                    <td><Badge type={t.pnl>=0?"green":"red"}>{t.pnl>=0?"WIN":"LOSS"}</Badge></td>
+                  </tr>
+                ))}</tbody>
+              </table>
+              {trades.length===0&&<div className="card" style={{textAlign:"center",padding:50,color:T.textMuted,marginTop:14}}><div style={{fontSize:36,marginBottom:10}}>◎</div>No trades yet</div>}
+            </div>
+          </div>
+        )}
+
+        {/* ══ ANALYTICS ══ */}
+        {tab==="analytics" && (
+          <div className="fade">
+            <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+              <div className="S" style={{fontWeight:700,fontSize:14}}>ANALYTICS</div>
+              {isPaper&&<Badge type="yellow">PAPER DATA</Badge>}
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}} className="g2">
+              <div className="card">
+                <div className="S" style={{fontWeight:700,color:T.accent,marginBottom:14}}>PERFORMANCE</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                  {[{l:"WIN RATE",v:`${winRate}%`,c:winRate>=55?T.green:T.red},{l:"TOTAL P&L",v:fmtPnl(analytics.totalPnl),c:analytics.totalPnl>=0?T.green:T.red},{l:"AVG WIN",v:`₹${fmt(analytics.avgWin)}`,c:T.green},{l:"AVG LOSS",v:`₹${fmt(analytics.avgLoss)}`,c:T.red},{l:"PROFIT FACTOR",v:analytics.avgLoss>0?fmt(analytics.avgWin/analytics.avgLoss):"N/A",c:T.yellow},{l:"TOTAL TRADES",v:analytics.wins+analytics.losses,c:T.text}].map(m=>(
+                    <div key={m.l} style={{background:T.bg2,borderRadius:10,padding:"13px 14px"}}>
+                      <div style={{fontSize:9,color:T.textMuted,letterSpacing:1.5,marginBottom:4}}>{m.l}</div>
+                      <div className="S" style={{fontSize:22,fontWeight:700,color:m.c}}>{m.v}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{marginTop:14}}>
+                  <div style={{fontSize:10,color:T.textMuted,marginBottom:6}}>EQUITY CURVE</div>
+                  <EquityCurve trades={trades} color={isPaper?T.yellow:T.green} height={80}/>
+                </div>
+              </div>
+              <div className="card">
+                <div className="S" style={{fontWeight:700,color:T.purple,marginBottom:14}}>STRATEGY BREAKDOWN</div>
+                {Object.entries(analytics.stratStats).length>0?Object.entries(analytics.stratStats).map(([s,st])=>(
+                  <div key={s} style={{marginBottom:12,background:T.bg2,borderRadius:9,padding:11}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
+                      <span style={{fontWeight:600,fontSize:12}}>{s}</span>
+                      <span style={{fontWeight:700,color:st.pnl>=0?T.green:T.red}}>{fmtPnl(st.pnl)}</span>
+                    </div>
+                    <div style={{display:"flex",gap:10,fontSize:10,color:T.textMuted,marginBottom:5}}>
+                      <span>{st.trades}T</span><span style={{color:T.green}}>{st.wins}W</span><span style={{color:T.red}}>{st.trades-st.wins}L</span>
+                      <span style={{color:T.yellow}}>{st.trades>0?Math.round(st.wins/st.trades*100):0}%</span>
+                    </div>
+                    <Pbar pct={st.trades>0?st.wins/st.trades*100:0} color={`linear-gradient(90deg,${T.purple},${T.accent})`}/>
+                  </div>
+                )):<div style={{textAlign:"center",padding:40,color:T.textMuted,fontSize:11}}>No trades yet</div>}
+              </div>
+              <div className="card">
+                <div className="S" style={{fontWeight:700,color:T.yellow,marginBottom:14}}>RISK DASHBOARD</div>
+                {[{l:"Daily Loss",v:`₹${fmt(Math.abs(Math.min(0,dailyPnl)))}`,lim:`₹${fmt(config.maxDailyLoss)}`,pct:Math.abs(Math.min(0,dailyPnl))/Math.max(1,config.maxDailyLoss)*100},
+                  {l:"Profit Progress",v:fmtPnl(dailyPnl),lim:`₹${fmt(config.profitTarget)}`,pct:Math.max(0,dailyPnl)/Math.max(1,config.profitTarget)*100},
+                  {l:"Trades Used",v:`${todayTrades}`,lim:`${config.maxTradesDay} max`,pct:todayTrades/Math.max(1,config.maxTradesDay)*100},
+                  {l:"Capital Drawdown",v:`${drawPct.toFixed(1)}%`,lim:`${100-config.minCapitalFloor}% max`,pct:drawPct/Math.max(1,100-config.minCapitalFloor)*100}
+                ].map(r=>(
+                  <div key={r.l} style={{marginBottom:13}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,fontSize:11}}>
+                      <span style={{color:T.textSub}}>{r.l}</span>
+                      <span><span style={{color:r.pct>80?T.red:T.text}}>{r.v}</span><span style={{color:T.textMuted}}> / {r.lim}</span></span>
+                    </div>
+                    <Pbar pct={r.pct} color={r.pct>80?`linear-gradient(90deg,${T.yellow},${T.red})`:`linear-gradient(90deg,${T.accent},${T.green})`}/>
+                  </div>
+                ))}
+              </div>
+              <div className="card">
+                <div className="S" style={{fontWeight:700,color:T.green,marginBottom:14}}>SYSTEM HEALTH</div>
+                {[{l:"Trading Engine",s:sysStatus,c:sysStatus==="ACTIVE"?T.green:T.red},
+                  {l:"Market",s:mktStatus.label,c:mktStatus.open?T.green:T.yellow},
+                  {l:"Broker API",s:apiStatus,c:apiStatus==="CONNECTED"?T.green:T.red},
+                  {l:"Mode",s:isPaper?"Paper (Virtual)":"Real (Live)",c:isPaper?T.yellow:T.green},
+                  {l:"Capital Protection",s:config.capitalProtection?"ON":"OFF",c:config.capitalProtection?T.green:T.yellow},
+                  {l:"Auto-Trade",s:config.autoTrade?"ENABLED":"MANUAL",c:config.autoTrade?T.red:T.accent},
+                  {l:"Sound Alerts",s:soundOn?"ON":"OFF",c:soundOn?T.accent:T.textMuted},
+                  {l:"Last Data",s:lastUpdated?lastUpdated.toLocaleTimeString("en-IN"):"Never",c:lastUpdated?T.green:T.red},
+                ].map(s=>(
+                  <div key={s.l} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",borderBottom:`1px solid ${T.bg3}`}}>
+                    <span style={{fontSize:11,color:T.textSub}}>{s.l}</span>
+                    <div style={{display:"flex",alignItems:"center",gap:5}}>
+                      <div style={{width:5,height:5,borderRadius:"50%",background:s.c}}/>
+                      <span style={{fontSize:10,color:s.c,fontWeight:700}}>{s.s}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ══ ORDERS ══ */}
+        {tab==="orders" && (
+          <div className="fade">
+            <div className="S" style={{fontWeight:700,color:T.accent,marginBottom:12,fontSize:14}}>BROKER ORDER BOOK ({realOrders.length})</div>
+            {apiStatus!=="CONNECTED"?<NoAPI/>:realOrders.length>0?(
+              <div style={{overflowX:"auto"}}>
+                <table>
+                  <thead><tr>{["ORDER ID","SYMBOL","SIDE","QTY","PRICE","STATUS","TIME"].map(h=><th key={h}>{h}</th>)}</tr></thead>
+                  <tbody>{realOrders.map((o,i)=>(
+                    <tr key={i}>
+                      <td style={{color:T.textMuted,fontSize:10}}>{o.order_id||o.orderId||"—"}</td>
+                      <td style={{fontWeight:600}}>{o.tradingsymbol||o.symbol||"—"}</td>
+                      <td><Badge type={(o.transaction_type||o.transactionType)==="BUY"?"green":"red"}>{o.transaction_type||o.transactionType||"—"}</Badge></td>
+                      <td>{o.quantity||o.qty||"—"}</td>
+                      <td>{o.price?"₹"+o.price:"MARKET"}</td>
+                      <td><Badge type="blue">{o.status||"—"}</Badge></td>
+                      <td style={{color:T.textMuted,fontSize:10}}>{o.order_timestamp||"—"}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            ):<div className="card" style={{textAlign:"center",padding:60,color:T.textMuted}}><div style={{fontSize:36,marginBottom:10}}>📄</div>No orders yet — orders appear here after execution</div>}
+          </div>
+        )}
+
+        {/* ══ LOGS ══ */}
+        {tab==="logs" && (
+          <div className="fade">
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+              <div className="S" style={{fontWeight:700,color:T.textSub,fontSize:14}}>SYSTEM LOG ({realLogs.length})</div>
+              <div style={{display:"flex",gap:8}}>
+                <button className="btn bo" style={{fontSize:10}} onClick={()=>{const t=realLogs.map(l=>`[${l.date} ${l.time}] [${l.level}] ${l.msg}`).join("\n");const b=new Blob([t],{type:"text/plain"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="quantedge-logs.txt";a.click();}}>⬇ Export</button>
+                <button className="btn bo" style={{fontSize:10}} onClick={()=>setRealLogs([])}>Clear</button>
+              </div>
+            </div>
+            <div className="card" style={{padding:0,overflow:"hidden"}}>
+              <div style={{display:"grid",gridTemplateColumns:"70px 54px 1fr",gap:10,padding:"9px 14px",background:T.bg2,fontSize:9,color:T.textMuted,letterSpacing:1,fontWeight:700,borderBottom:`1px solid ${T.cardBorder}`}}>
+                <span>TIME</span><span>LEVEL</span><span>MESSAGE</span>
+              </div>
+              <div style={{maxHeight:"68vh",overflowY:"auto"}}>
+                {realLogs.map(l=>(
+                  <div key={l.id} className="logrow">
+                    <span style={{color:T.textMuted}}>{l.time}</span>
+                    <span style={{color:l.level==="TRADE"?T.accent:l.level==="SIGNAL"?T.purple:l.level==="WIN"?T.green:l.level==="LOSS"||l.level==="ERROR"?T.red:l.level==="WARN"?T.yellow:T.textMuted,fontWeight:600,fontSize:10}}>{l.level}</span>
+                    <span style={{color:l.level==="TRADE"?T.accent:l.level==="SIGNAL"?T.purple:l.level==="WIN"?T.green:l.level==="LOSS"||l.level==="ERROR"?T.red:T.textSub,lineHeight:1.5}}>{l.msg}</span>
+                  </div>
+                ))}
+                {realLogs.length===0&&<div style={{padding:50,textAlign:"center",color:T.textMuted,fontSize:11}}>No log entries</div>}
+              </div>
+            </div>
+          </div>
+        )}
+
+      </div>
+
+      {/* Footer */}
+      <div style={{borderTop:`1px solid ${T.navBorder}`,padding:"8px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:10,color:T.textMuted,flexWrap:"wrap",gap:4,marginBottom:60}}>
+        <span>QUANTEDGE AI v3.0 · REAL DATA ONLY · NIFTY · BANKNIFTY</span>
+        <span style={{color:T.red,fontSize:9}}>⚠ EDUCATIONAL USE ONLY — NOT FINANCIAL ADVICE</span>
+      </div>
+    </div>
+  );
+}
+
+
+
+// Mount
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(React.createElement(React.StrictMode, null, React.createElement(TradingPlatform)));
+  </script>
+</body>
+</html>
